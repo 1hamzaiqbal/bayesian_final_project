@@ -24,7 +24,7 @@ This report addresses each bullet point from the [instructions](instructions.md)
 
 We evaluated the Branin function over the domain $\mathcal{X} = [-5, 10] \times [0, 15]$ using a dense 1000 × 1000 grid (1,000,000 evaluation points).
 
-![Branin Function Heatmap](branin_heatmap.png)
+![Branin Function Heatmap](baseline_branin_heatmap.png)
 
 **Figure 1:** Heatmap of the Branin function. Red stars mark the three global minima at $(-\pi, 12.275)$, $(\pi, 2.275)$, and $(9.42478, 2.475)$, each with value $f^* \approx 0.398$.
 
@@ -59,20 +59,11 @@ with standard parameters $a=1$, $b=\frac{5.1}{4\pi^2}$, $c=\frac{5}{\pi}$, $r=6$
 
 4. **Anisotropic behavior:** The cosine term adds oscillation only in $x_1$ (period ~2π ≈ 6.3), suggesting different lengthscales are needed for each dimension.
 
-### Quantitative Support: Gradient Magnitude
+### Quantitative Support: Gradient Magnitude (proxy)
 
-To support this claim quantitatively, we visualize the gradient magnitude $|\nabla f(x)|$ across the domain:
+A practical proxy for “how non-stationary this looks” is how uneven the gradient magnitude $|\nabla f(x)|$ is over the domain. If the gradient varies wildly, a stationary GP with a single global lengthscale will struggle.
 
-![Gradient Magnitude Heatmap](gradient_magnitude_heatmap.png)
-
-**Figure 1b:** Gradient magnitude heatmaps. Left: Original function. Right: Log-transformed. Gradient magnitude relates to appropriate local lengthscale.
-
-| Metric | Original | Log-Transformed |
-|--------|----------|-----------------|
-| Gradient range | [0.04, 113.31] | [0.003, 2.86] |
-| Range ratio | 3237× | 852× |
-
-The extreme variation in gradient magnitude (3237×) demonstrates why a single lengthscale cannot work everywhere.
+In Section 3 we compare the original Branin to a simple monotone transform and report a robust gradient-variation metric (p95/p5 of $|\nabla f|$).
 
 **Implications for Bayesian Optimization:**
 - Use ARD (Automatic Relevance Determination) kernels with per-dimension lengthscales
@@ -85,39 +76,21 @@ The extreme variation in gradient magnitude (3237×) demonstrates why a single l
 
 > **Bullet 3:** *"Can you find a transformation of the data that makes it more stationary?"*
 
-**Yes.** We apply a log transformation to compress the dynamic range:
+**Yes.** A simple variance‑compressing transform that improves Branin’s apparent stationarity is:
 
-$$g(x_1, x_2) = \log(f(x_1, x_2) + 1)$$
+$$g(x_1, x_2) = \sqrt{f(x_1, x_2)}$$
 
-![Branin Transformation Comparison](branin_transformed_heatmap.png)
+![Branin Stationarity Summary](selected_branin_stationarity_summary.png)
 
-**Figure 2:** Comparison of original (left) and log-transformed (right) Branin function.
+**Figure 2:** Original vs `sqrt(f)` transformed Branin (top row) and corresponding gradient-magnitude maps (bottom row; log scale). The p95/p5 ratio in the titles summarizes gradient variation (lower is better).
 
-| Metric | Original | Log-Transformed |
-|--------|----------|-----------------|
-| Range | [0.40, 308.13] | [0.34, 5.73] |
-| Max/Min Ratio | ~750× | ~17× |
-| Std. Deviation | 51.35 | 1.12 |
-| Gradient range ratio | 3237× | 852× |
+**Key quantitative change:**
+- Original: p95/p5($|\nabla f|$) ≈ 15.00  
+- `sqrt(f)`: p95/p5($|\nabla \sqrt{f}|$) ≈ 5.16  
 
 **Why does this help?**
-- Compresses the dynamic range by a factor of ~44×
-- Reduces gradient variation, making local curvature more uniform
-- Preserves the locations of minima and overall structure
-- Makes the function more amenable to a stationary GP
-
-### Exploration: `sqrt(f)` can be more “stationarizing” than `log(f+1)`
-
-The max/min gradient ratio above is a useful sanity check, but it is sensitive to near‑zero gradients. In `data_visualization/explorations/`, we compared transforms using a more robust proxy: the **p95/p5 ratio of** $|\nabla F|$ (lower = more uniform local curvature).
-
-On Branin, `sqrt(f)` reduces curvature variation more than `log(f+1)`:
-- identity: p95/p5 ≈ 15.00  
-- log(f+1): p95/p5 ≈ 9.35  
-- **sqrt(f): p95/p5 ≈ 5.16**  
-
-![Branin Transform Stationarity Sweep](explorations/exp_branin_transform_stationarity_grid.png)
-
-**Practical takeaway:** if the goal is to make a stationary kernel with a single global lengthscale “less wrong”, `sqrt(f)` is a strong candidate. That said, later sections validate transforms by predictive behavior and calibration, not only this proxy.
+- Compresses the dynamic range while keeping minima locations unchanged (monotone transform)
+- Reduces variation in local curvature, making a single global lengthscale less implausible
 
 ---
 
@@ -129,9 +102,9 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 - **LDA:** 288 hyperparameter configurations
 - **SVM:** 1,400 hyperparameter configurations
 
-![KDE Plots](kde_lda_svm.png)
+![KDE Plots](selected_benchmark_output_transform_summary.png)
 
-**Figure 3:** Histograms and KDEs for LDA and SVM benchmarks. Note: KDEs use SciPy's default bandwidth selection (Scott's rule); shapes should be interpreted qualitatively.
+**Figure 3:** KDEs for LDA and SVM benchmarks (left column: original; right column: log-transformed). KDEs use SciPy's default bandwidth selection (Scott's rule); shapes should be interpreted qualitatively.
 
 ### LDA Benchmark
 | Statistic | Value |
@@ -169,10 +142,6 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 
 $$y' = \log(y)$$
 
-![Transformed KDE Plots](kde_lda_svm_transformed.png)
-
-**Figure 4:** Comparison of original (left) and log-transformed (right) distributions.
-
 ### Skewness Reduction
 
 | Benchmark | Original Skewness | Log-Transformed | Reduction |
@@ -198,17 +167,21 @@ $$y' = \log(y)$$
 
 **Hypothesis to test:** Log transforms are a reasonable candidate for improving GP fit quality. We will compare marginal likelihood and calibration with and without transforms in the model-fitting section to validate this empirically.
 
-### Explorations: power transforms and input scaling
+### Input scaling matters for “stationarity” on LDA/SVM
 
-Two additional findings (see `data_visualization/explorations/exploratory_results.md`):
+The benchmark hyperparameter grids span orders of magnitude in some dimensions (especially SVM). Even with the same objective, modeling in raw units vs log-scaled units can change how stationary the surface appears.
 
-1. **Output power transforms (Box-Cox)** can make the objective distributions far more symmetric than log alone (skew drops to ~0.3 for both LDA and SVM).
+![Benchmark Input Scaling Stationarity Proxy](selected_benchmark_input_scaling_stationarity.png)
 
-![Benchmark Output Transform Sweep](explorations/exp_benchmark_output_transform_zscore_kde.png)
+**Figure 4:** Distribution of log10($|\nabla f|$) under raw vs log-scaled input coordinates. The p95/p5 ratio summarizes gradient variation (lower is better).
 
-2. **Input scaling is critical**: LDA/SVM hyperparameters span orders of magnitude, so using raw hyperparameter units can induce strong apparent non‑stationarity. Using log10 coordinates on the high‑dynamic‑range dimensions substantially reduces the variation of $|\nabla f|$ over the grid (especially for SVM).
+Key result (p95/p5 of $|\nabla f|$):
+- LDA: 245.75 → 90.10 (log10 scaling dims 2&3)
+- SVM: 2112.50 → 22.98 (log10 scaling dims 1&3)
 
-![Benchmark Input Scaling Stationarity Proxy](explorations/exp_benchmark_input_scaling_gradmag_kde.png)
+**Takeaway:** For LDA/SVM, log-scaling positive hyperparameters is often as important as output transforms for making a stationary GP surrogate plausible.
+
+Additional deeper sweeps (including Box-Cox output transforms) are in `data_visualization/explorations/exploratory_results.md`.
 
 ---
 
@@ -217,9 +190,9 @@ Two additional findings (see `data_visualization/explorations/exploratory_result
 This section motivates (but does not yet validate) modeling choices that the next section tests quantitatively:
 
 - **Branin:** strong anisotropy and an explicit periodic component in $x_1$ (period $\approx 2\pi$) suggest ARD kernels and/or a periodic kernel component as candidates.
-- **Branin (output transforms):** log(f+1) is a simple stationarizing transform; explorations suggest **sqrt(f)** may reduce curvature variation even more.
-- **LDA/SVM (outputs):** right-skewed objectives motivate trying variance‑compressing transforms (log / log(y+1)), and explorations show **Box‑Cox** can reduce skewness further.
-- **LDA/SVM (inputs):** hyperparameter grids span orders of magnitude; explorations suggest log-scaling positive hyperparameters is an important “stationarizing” step for GP modeling.
+- **Branin (output transforms):** `sqrt(f)` is a simple stationarizing transform by gradient-variation proxy.
+- **LDA/SVM (outputs):** right-skewed objectives motivate variance‑compressing transforms (log / log(y+1)).
+- **LDA/SVM (inputs):** hyperparameter grids span orders of magnitude; log-scaling positive hyperparameters is an important “stationarizing” step for GP modeling.
 
 In `model_fitting/report.md` we explicitly evaluate these candidates using marginal likelihood, BIC, and calibration diagnostics.
 
@@ -231,9 +204,9 @@ In `model_fitting/report.md` we explicitly evaluate these candidates using margi
 |--------|----------|--------|
 | 1 | Heatmap created? | Yes - 1000×1000 grid with 3 marked global minima |
 | 2 | Will a stationary GP fit well? | **No** - varying curvature (gradient ratio: 3237×) |
-| 3 | Transformation for stationarity? | **log(f+1)** helps; explorations suggest **sqrt(f)** can further reduce curvature variation |
+| 3 | Transformation for stationarity? | **sqrt(f)** reduces gradient variation (p95/p5: 15.00 → 5.16) |
 | 4 | KDE interpretation? | Both LDA and SVM are **right-skewed** |
-| 5 | Transformation for better behavior? | **log(y)** helps; explorations suggest **Box‑Cox** and input log-scaling can help further |
+| 5 | Transformation for better behavior? | **log(y)** reduces skewness by 17–43% |
 
 **Key takeaways:**
 1. Use ARD kernels to capture anisotropic behavior

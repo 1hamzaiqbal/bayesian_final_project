@@ -155,6 +155,132 @@ IMPLICATIONS FOR BAYESIAN OPTIMIZATION:
     return analysis
 
 
+def _gradient_magnitude_2d(F, dx1, dx2):
+    grad_x1 = np.gradient(F, dx1, axis=1)
+    grad_x2 = np.gradient(F, dx2, axis=0)
+    return np.sqrt(grad_x1**2 + grad_x2**2)
+
+
+def _percentile_ratio(x, p_hi=95, p_lo=5):
+    x_flat = np.asarray(x).ravel()
+    hi = np.percentile(x_flat, p_hi)
+    lo = np.percentile(x_flat, p_lo)
+    return float(hi / (lo + 1e-12))
+
+
+def create_branin_stationarity_summary(save_path=None):
+    """
+    Bullet point 3: Can you find a transformation of the data that makes it more stationary?
+
+    We compare the original output f(x) to a monotone variance-compressing transform:
+      g(x) = sqrt(f(x))
+
+    As a stationarity proxy, we quantify how uniformly the gradient magnitude |∇F| varies
+    across the domain (lower variation suggests a single global GP lengthscale is less wrong).
+    """
+    print("\n" + "=" * 70)
+    print("BULLET POINT 3 (with support for Bullet 2): Branin stationarity transform")
+    print("=" * 70)
+
+    bounds = [(-5, 10), (0, 15)]
+
+    # Use a moderately dense grid for stable gradients (faster than 1000x1000)
+    x1 = np.linspace(bounds[0][0], bounds[0][1], 500)
+    x2 = np.linspace(bounds[1][0], bounds[1][1], 500)
+    X1, X2 = np.meshgrid(x1, x2)
+    Z = branin(X1, X2)
+    Z_sqrt = np.sqrt(Z)
+
+    dx1 = x1[1] - x1[0]
+    dx2 = x2[1] - x2[0]
+
+    g_orig = _gradient_magnitude_2d(Z, dx1, dx2)
+    g_sqrt = _gradient_magnitude_2d(Z_sqrt, dx1, dx2)
+
+    ratio_orig = _percentile_ratio(g_orig, 95, 5)
+    ratio_sqrt = _percentile_ratio(g_sqrt, 95, 5)
+
+    print("\nGradient-variation proxy (lower is better):")
+    print(f"  Original: p95/p5(|∇f|)        = {ratio_orig:.2f}")
+    print(f"  sqrt(f):  p95/p5(|∇sqrt(f)|)  = {ratio_sqrt:.2f}")
+
+    minima = [(-np.pi, 12.275), (np.pi, 2.275), (9.42478, 2.475)]
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9), constrained_layout=True)
+
+    # Row 1: values
+    im0 = axes[0, 0].imshow(
+        Z,
+        extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]],
+        origin="lower",
+        aspect="auto",
+        cmap="viridis",
+    )
+    for x, y in minima:
+        axes[0, 0].plot(x, y, "r*", markersize=10, markeredgecolor="white", markeredgewidth=1.0)
+    axes[0, 0].set_title("Original Branin $f(x)$")
+    axes[0, 0].set_xlabel("$x_1$")
+    axes[0, 0].set_ylabel("$x_2$")
+    plt.colorbar(im0, ax=axes[0, 0], fraction=0.046, pad=0.02)
+
+    im1 = axes[0, 1].imshow(
+        Z_sqrt,
+        extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]],
+        origin="lower",
+        aspect="auto",
+        cmap="viridis",
+    )
+    for x, y in minima:
+        axes[0, 1].plot(x, y, "r*", markersize=10, markeredgecolor="white", markeredgewidth=1.0)
+    axes[0, 1].set_title("Transformed $g(x)=\\sqrt{f(x)}$")
+    axes[0, 1].set_xlabel("$x_1$")
+    axes[0, 1].set_ylabel("$x_2$")
+    plt.colorbar(im1, ax=axes[0, 1], fraction=0.046, pad=0.02)
+
+    # Row 2: log10 gradient magnitude (shared color scale)
+    g0 = np.log10(g_orig + 1e-12)
+    g1 = np.log10(g_sqrt + 1e-12)
+    vmin, vmax = np.percentile(np.concatenate([g0.ravel(), g1.ravel()]), [1, 99])
+
+    im2 = axes[1, 0].imshow(
+        g0,
+        extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]],
+        origin="lower",
+        aspect="auto",
+        cmap="coolwarm",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    axes[1, 0].set_title(f"log10(|∇f|) (p95/p5={ratio_orig:.2f})")
+    axes[1, 0].set_xlabel("$x_1$")
+    axes[1, 0].set_ylabel("$x_2$")
+
+    im3 = axes[1, 1].imshow(
+        g1,
+        extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]],
+        origin="lower",
+        aspect="auto",
+        cmap="coolwarm",
+        vmin=vmin,
+        vmax=vmax,
+    )
+    axes[1, 1].set_title(f"log10(|∇sqrt(f)|) (p95/p5={ratio_sqrt:.2f})")
+    axes[1, 1].set_xlabel("$x_1$")
+    axes[1, 1].set_ylabel("$x_2$")
+
+    fig.colorbar(im2, ax=axes[1, :], fraction=0.025, pad=0.02, label="log10(|∇F|)")
+
+    fig.suptitle("Branin stationarity proxy: original vs sqrt(f)", fontsize=13)
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Saved: {save_path}")
+
+    plt.close()
+
+    return ratio_orig, ratio_sqrt
+
+
 def create_gradient_magnitude_heatmap(save_path=None):
     """
     Create a heatmap of the gradient magnitude |∇f(x)| to quantitatively 
@@ -584,6 +710,93 @@ without transforms in the model-fitting section to validate this empirically.
     return lda_log, svm_log
 
 
+def _build_grid(data):
+    x1_vals = np.unique(data[:, 0]); x1_vals.sort()
+    x2_vals = np.unique(data[:, 1]); x2_vals.sort()
+    x3_vals = np.unique(data[:, 2]); x3_vals.sort()
+
+    i1 = {float(v): i for i, v in enumerate(x1_vals)}
+    i2 = {float(v): i for i, v in enumerate(x2_vals)}
+    i3 = {float(v): i for i, v in enumerate(x3_vals)}
+
+    Y = np.full((len(x1_vals), len(x2_vals), len(x3_vals)), np.nan, dtype=float)
+    for row in data:
+        Y[i1[float(row[0])], i2[float(row[1])], i3[float(row[2])]] = float(row[3])
+    if not np.all(np.isfinite(Y)):
+        raise ValueError("Grid assembly failed: missing values in Y.")
+    return x1_vals, x2_vals, x3_vals, Y
+
+
+def _grad_mag_3d(Y, coords):
+    g1, g2, g3 = np.gradient(Y, coords[0], coords[1], coords[2], edge_order=1)
+    return np.sqrt(g1**2 + g2**2 + g3**2)
+
+
+def create_benchmark_input_scaling_stationarity_plot(save_path=None):
+    """
+    Extra: input scaling for LDA/SVM hyperparameter grids.
+
+    Some hyperparameter dimensions span orders of magnitude (especially SVM). Modeling in raw
+    units can induce strong apparent non-stationarity; log-scaling positive hyperparameters often
+    helps. We show a simple proxy: the distribution of log10(|∇f|) under different coordinates.
+    """
+    print("\n" + "=" * 70)
+    print("EXTRA: Benchmark input scaling (stationarity proxy)")
+    print("=" * 70)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(script_dir)
+    lda = np.loadtxt(os.path.join(parent_dir, "lda.csv"), delimiter=",")
+    svm = np.loadtxt(os.path.join(parent_dir, "svm.csv"), delimiter=",")
+
+    datasets = {"LDA": lda, "SVM": svm}
+
+    xs = np.linspace(-10, 10, 500)
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+
+    for ax, (name, data) in zip(axes, datasets.items()):
+        x1, x2, x3, Y = _build_grid(data)
+
+        raw_coords = (x1, x2, x3)
+        if name == "LDA":
+            log_coords = (x1, np.log10(x2), np.log10(x3))
+        else:
+            log_coords = (np.log10(x1), x2, np.log10(x3))
+
+        g_raw = _grad_mag_3d(Y, raw_coords)
+        g_log = _grad_mag_3d(Y, log_coords)
+
+        ratio_raw = _percentile_ratio(g_raw, 95, 5)
+        ratio_log = _percentile_ratio(g_log, 95, 5)
+
+        g_raw_plot = np.log10(g_raw.ravel() + 1e-12)
+        g_log_plot = np.log10(g_log.ravel() + 1e-12)
+
+        kde_raw = stats.gaussian_kde(g_raw_plot[np.isfinite(g_raw_plot)])
+        kde_log = stats.gaussian_kde(g_log_plot[np.isfinite(g_log_plot)])
+
+        ax.plot(xs, kde_raw(xs), label=f"raw (p95/p5={ratio_raw:.1f})", color="tab:blue")
+        ax.plot(xs, kde_log(xs), label=f"log-scaled (p95/p5={ratio_log:.1f})", color="tab:green")
+        ax.set_title(f"{name}: log10(|∇f|) distribution")
+        ax.set_xlabel("log10(|∇f|)")
+        ax.set_ylabel("density")
+        ax.set_xlim(xs.min(), xs.max())
+        ax.grid(True, alpha=0.25)
+        ax.legend(fontsize=8)
+
+        print(f"\n{name}: p95/p5(|∇f|) under coordinate systems (lower is better)")
+        print(f"  raw inputs:        {ratio_raw:.2f}")
+        print(f"  log-scaled inputs: {ratio_log:.2f}")
+
+    plt.suptitle("Benchmark input scaling can reduce apparent non-stationarity", fontsize=13, y=1.02)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        print(f"Saved: {save_path}")
+    plt.close()
+
+
 def main():
     """Run all data visualization tasks."""
     print("\n" + "=" * 70)
@@ -595,43 +808,37 @@ def main():
     
     # Bullet Point 1: Branin Heatmap
     create_branin_heatmap(
-        save_path=os.path.join(output_dir, 'branin_heatmap.png')
+        save_path=os.path.join(output_dir, 'baseline_branin_heatmap.png')
     )
     
     # Bullet Point 2: Stationarity Analysis
     analyze_stationarity()
     
-    # Quantitative support for stationarity claims
-    create_gradient_magnitude_heatmap(
-        save_path=os.path.join(output_dir, 'gradient_magnitude_heatmap.png')
+    # Bullet Point 3: Transform for improved stationarity (with gradient proxy)
+    create_branin_stationarity_summary(
+        save_path=os.path.join(output_dir, 'selected_branin_stationarity_summary.png')
     )
-    
-    # Bullet Point 3: Transformation for Stationarity
-    create_transformed_heatmap(
-        save_path=os.path.join(output_dir, 'branin_transformed_heatmap.png')
-    )
-    
-    # Bullet Point 4: KDE for LDA and SVM (with histograms)
-    create_kde_plots(
-        save_path=os.path.join(output_dir, 'kde_lda_svm.png')
-    )
-    
-    # Bullet Point 5: Transformation for Better Distributions
+
+    # Bullet Point 5: Transformation for Better Distributions (includes original KDEs)
     create_transformed_kde_plots(
-        save_path=os.path.join(output_dir, 'kde_lda_svm_transformed.png')
+        save_path=os.path.join(output_dir, 'selected_benchmark_output_transform_summary.png')
+    )
+
+    # Extra: input scaling for benchmark stationarity
+    create_benchmark_input_scaling_stationarity_plot(
+        save_path=os.path.join(output_dir, 'selected_benchmark_input_scaling_stationarity.png')
     )
     
     print("\n" + "=" * 70)
     print("SUMMARY: All visualizations completed!")
     print("=" * 70)
     print(f"\nOutput files saved to: {output_dir}")
-    print("  - branin_heatmap.png")
-    print("  - gradient_magnitude_heatmap.png")
-    print("  - branin_transformed_heatmap.png")
-    print("  - kde_lda_svm.png")
-    print("  - kde_lda_svm_transformed.png")
+    print("  - baseline_branin_heatmap.png")
+    print("  - selected_branin_stationarity_summary.png")
+    print("  - selected_benchmark_output_transform_summary.png")
+    print("  - selected_benchmark_input_scaling_stationarity.png")
     print("\nAll 5 bullet points from the data visualization section addressed.")
-    print("+ Gradient magnitude heatmap for quantitative stationarity support")
+    print("+ Extra: input scaling diagnostic for benchmark stationarity")
     print("=" * 70)
 
 

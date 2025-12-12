@@ -85,7 +85,7 @@ We fit a Gaussian process with:
 
 > **Bullet 4:** *"Make a heatmap of the Gaussian process posterior mean. Compare the predicted values with the true values. Do you see systematic errors?"*
 
-![GP Posterior Heatmaps - Original](original_posterior_heatmaps.png)
+![GP Posterior Heatmaps - Original](baseline_branin_se_posterior_heatmaps.png)
 
 **Figure 1:** Left: True Branin. Middle: GP posterior mean. Right: GP posterior std.
 
@@ -93,7 +93,7 @@ We fit a Gaussian process with:
 
 To quantify systematic errors, we visualize the residuals $\mu(x) - f(x)$:
 
-![Residual Heatmap](original_residual_heatmap.png)
+![Residual Heatmap](baseline_branin_se_residual_heatmap.png)
 
 **Figure 1b:** Residual heatmap showing $\mu(x) - f(x)$. Red = overprediction, Blue = underprediction.
 
@@ -126,7 +126,7 @@ The σ values shown are **predictive standard deviation** (includes noise varian
 
 > **Bullet 6:** *"Make a kernel density estimate of the z-scores. Is the GP model well calibrated?"*
 
-![Z-Score Distribution - Original](zscore_original.png)
+![Z-Score Distribution - Original](baseline_branin_se_zscore.png)
 
 **Figure 2:** KDE of z-scores with coverage metrics.
 
@@ -151,7 +151,7 @@ Note: The KDE shape shows some deviation from Gaussian (slight bimodality), sugg
 
 > **Bullet 7:** *"Repeat the above using a log transformation. Does the marginal likelihood improve? Does the model appear better calibrated?"*
 
-![GP Posterior Heatmaps - Log Transformed](log_transformed_posterior_heatmaps.png)
+![GP Posterior Heatmaps - Log Transformed](baseline_branin_log_se_posterior_heatmaps.png)
 
 ### Marginal Likelihood Comparison
 
@@ -164,7 +164,7 @@ Note: The KDE shape shows some deviation from Gaussian (slight bimodality), sugg
 
 ### Calibration (Log-Transformed)
 
-![Z-Score Distribution - Log Transformed](zscore_log_transformed.png)
+![Z-Score Distribution - Log Transformed](baseline_branin_log_se_zscore.png)
 
 | Metric | Original | Log-Transformed |
 |--------|----------|-----------------|
@@ -220,9 +220,9 @@ Branin contains a `cos(x1)` term, so we also searched a richer family on the ori
 | **1** | **SE + Periodic(x1)** | **-111.71** | 66.25 | 6 |
 | 2 | SE (ARD) | -31.36 | 22.61 | 4 |
 
-![Baseline vs Improved GP](explorations/baseline_vs_periodic_grid.png)
+![Baseline vs Improved GP](explorations/baseline_vs_selected_branin_heatmaps_grid.png)
 
-![Z-score Calibration Comparison](explorations/zscore_comparison.png)
+![Z-score Calibration Comparison](explorations/baseline_vs_selected_branin_zscore_comparison.png)
 
 **Best Model (overall):** **SE + Periodic(x1)**. It matches the known structure of Branin and improves predictive RMSE by ~10× while improving calibration (see `explorations/README.md`).
 

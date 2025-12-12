@@ -167,7 +167,7 @@ def compute_bic(gp, X, y, include_mean=True):
     return bic, log_likelihood, k
 
 
-def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", save_dir=None):
+def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", save_dir=None, save_filename=None):
     """Create heatmaps of GP posterior mean and std deviation."""
     # Create prediction grid
     x1 = np.linspace(bounds[0][0], bounds[0][1], 100)
@@ -219,7 +219,7 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
     plt.tight_layout()
     
     if save_dir:
-        filename = f"{title_prefix.lower().replace(' ', '_')}posterior_heatmaps.png"
+        filename = save_filename or f"{title_prefix.lower().replace(' ', '_')}posterior_heatmaps.png"
         plt.savefig(os.path.join(save_dir, filename), dpi=150, bbox_inches='tight')
         print(f"Saved: {filename}")
     
@@ -228,7 +228,7 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
     return y_mean, y_std, y_true
 
 
-def create_residual_heatmap(gp, bounds, title_prefix="", save_dir=None, use_log_transform=False):
+def create_residual_heatmap(gp, bounds, title_prefix="", save_dir=None, use_log_transform=False, save_filename=None):
     """Create a heatmap of residuals μ(x) - f(x) to show systematic errors."""
     # Create prediction grid
     x1 = np.linspace(bounds[0][0], bounds[0][1], 100)
@@ -273,7 +273,7 @@ def create_residual_heatmap(gp, bounds, title_prefix="", save_dir=None, use_log_
     plt.tight_layout()
     
     if save_dir:
-        filename = f"{title_prefix.lower().replace(' ', '_')}residual_heatmap.png"
+        filename = save_filename or f"{title_prefix.lower().replace(' ', '_')}residual_heatmap.png"
         plt.savefig(os.path.join(save_dir, filename), dpi=150, bbox_inches='tight')
         print(f"Saved: {filename}")
     
@@ -483,14 +483,24 @@ def analyze_branin_original(save_dir):
     # Create heatmaps
     print("\n--- Creating Posterior Heatmaps ---")
     y_mean, y_std, y_true = create_posterior_heatmaps(
-        gp, X_train, y_train, bounds, 
-        title_prefix="Original ", 
-        save_dir=save_dir
+        gp,
+        X_train,
+        y_train,
+        bounds,
+        title_prefix="Baseline SE (original scale) ",
+        save_dir=save_dir,
+        save_filename="baseline_branin_se_posterior_heatmaps.png",
     )
     
     # Create residual heatmap
     print("\n--- Creating Residual Heatmap ---")
-    create_residual_heatmap(gp, bounds, title_prefix="Original ", save_dir=save_dir)
+    create_residual_heatmap(
+        gp,
+        bounds,
+        title_prefix="Baseline SE (original scale) ",
+        save_dir=save_dir,
+        save_filename="baseline_branin_se_residual_heatmap.png",
+    )
     
     # Check posterior std at training points
     # NOTE: sklearn's GP with normalize_y=True rescales σ by data std
@@ -507,8 +517,8 @@ def analyze_branin_original(save_dir):
     z_scores = compute_zscores(gp, X_train, use_log_transform=False)
     mean_z, std_z, coverage = plot_zscore_kde(
         z_scores, 
-        "Z-Scores: Original Branin Data",
-        save_path=os.path.join(save_dir, "zscore_original.png")
+        "Z-Scores: Baseline SE on Branin (original scale)",
+        save_path=os.path.join(save_dir, "baseline_branin_se_zscore.png")
     )
     print(f"  Z-score mean: {mean_z:.3f} (should be ≈ 0)")
     print(f"  Z-score std: {std_z:.3f} (should be ≈ 1)")
@@ -674,9 +684,9 @@ def analyze_branin_log_transformed(X_train, save_dir):
     
     plt.suptitle('Log-Transformed Branin: GP Posterior', fontsize=12)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "log_transformed_posterior_heatmaps.png"), dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, "baseline_branin_log_se_posterior_heatmaps.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved: log_transformed_posterior_heatmaps.png")
+    print("Saved: baseline_branin_log_se_posterior_heatmaps.png")
     
     # Z-score calibration
     print("\n--- Z-Score Calibration (Log-Transformed) ---")
@@ -684,7 +694,7 @@ def analyze_branin_log_transformed(X_train, save_dir):
     mean_z, std_z, coverage = plot_zscore_kde(
         z_scores,
         "Z-Scores: Log-Transformed Branin Data",
-        save_path=os.path.join(save_dir, "zscore_log_transformed.png")
+        save_path=os.path.join(save_dir, "baseline_branin_log_se_zscore.png")
     )
     print(f"  Z-score mean: {mean_z:.3f}")
     print(f"  Z-score std: {std_z:.3f}")
@@ -821,11 +831,11 @@ def main():
     print("=" * 70)
     
     print("\nFiles generated:")
-    print("  - original_posterior_heatmaps.png")
+    print("  - baseline_branin_se_posterior_heatmaps.png")
     print("  - explorations/exp_high_noise_posterior_heatmaps.png")
-    print("  - zscore_original.png")
-    print("  - log_transformed_posterior_heatmaps.png")
-    print("  - zscore_log_transformed.png")
+    print("  - baseline_branin_se_zscore.png")
+    print("  - baseline_branin_log_se_posterior_heatmaps.png")
+    print("  - baseline_branin_log_se_zscore.png")
     
     print("\nBest models found:")
     print(f"  Branin (log): {branin_results[0]['name']} (BIC: {branin_results[0]['bic']:.2f})")

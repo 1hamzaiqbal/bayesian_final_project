@@ -3,10 +3,10 @@ Explorations: visual comparison of baseline SE GP vs SE+Periodic(x1) GP on Brani
 
 Run: python branin_visual_comparison.py
 Outputs:
-  - baseline_vs_periodic_grid.png
-  - zscore_comparison.png
-  - baseline_se_heatmaps.png
-  - se_periodic_x1_heatmaps.png
+  - baseline_vs_selected_branin_heatmaps_grid.png
+  - baseline_vs_selected_branin_zscore_comparison.png
+  - baseline_branin_se_heatmaps.png
+  - selected_branin_se_plus_periodic_x1_heatmaps.png
 """
 
 import os
@@ -109,12 +109,12 @@ def main():
     plot_heatmaps(
         X_train, y_train, baseline_gp, bounds,
         "Baseline SE (ARD) GP",
-        os.path.join(save_dir, "baseline_se_heatmaps.png"),
+        os.path.join(save_dir, "baseline_branin_se_heatmaps.png"),
     )
     plot_heatmaps(
         X_train, y_train, periodic_gp, bounds,
         "Improved SE + Periodic(x1) GP",
-        os.path.join(save_dir, "se_periodic_x1_heatmaps.png"),
+        os.path.join(save_dir, "selected_branin_se_plus_periodic_x1_heatmaps.png"),
     )
 
     # Combined 2x3 comparison
@@ -162,7 +162,7 @@ def main():
 
     plt.suptitle("Baseline vs Improved GP on Branin (original scale)", fontsize=13)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "baseline_vs_periodic_grid.png"), dpi=160, bbox_inches="tight")
+    plt.savefig(os.path.join(save_dir, "baseline_vs_selected_branin_heatmaps_grid.png"), dpi=160, bbox_inches="tight")
     plt.close()
 
     # Z-score KDE comparison
@@ -184,7 +184,7 @@ def main():
     ax.set_title("Z-score calibration comparison")
     ax.legend()
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "zscore_comparison.png"), dpi=160, bbox_inches="tight")
+    plt.savefig(os.path.join(save_dir, "baseline_vs_selected_branin_zscore_comparison.png"), dpi=160, bbox_inches="tight")
     plt.close()
 
     print("Saved comparison plots to explorations/.")
@@ -192,4 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

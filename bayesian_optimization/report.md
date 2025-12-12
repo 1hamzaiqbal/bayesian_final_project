@@ -46,7 +46,7 @@ where:
 
 ## 2. EI Heatmaps for Branin
 
-![EI Heatmaps](ei_heatmaps.png)
+![EI Heatmaps](selected_branin_ei_heatmaps.png)
 
 **Figure 1:** Left: GP posterior mean. Middle: GP posterior std. Right: Expected Improvement with marked maximum.
 
@@ -100,7 +100,7 @@ $$\text{gap} = \frac{f_{\text{initial best}} - f_{\text{found best}}}{f_{\text{i
 
 ## 6. Learning Curves
 
-![Learning Curves](learning_curves.png)
+![Learning Curves](selected_bo_vs_rs_learning_curves.png)
 
 **Figure 2:** Learning curves comparing BO (blue) vs Random Search (red dashed). Shaded regions show ±1 standard error (not std).
 

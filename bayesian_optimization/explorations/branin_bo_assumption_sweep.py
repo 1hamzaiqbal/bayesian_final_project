@@ -7,7 +7,7 @@ We compare:
   C) Improved surrogate: original scale + SE + Periodic(x1) kernel + corrected noise
 
 Outputs:
-  - branin_bo_learning_comparison.png
+  - exp_branin_bo_learning_comparison.png
   - printed table of mean final gap and best values
 """
 
@@ -227,7 +227,7 @@ def main():
     ax.grid(True, alpha=0.3)
     ax.legend()
     plt.tight_layout()
-    out_path = os.path.join(save_dir, "branin_bo_learning_comparison.png")
+    out_path = os.path.join(save_dir, "exp_branin_bo_learning_comparison.png")
     plt.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close()
     print(f"Saved: {out_path}")
@@ -235,4 +235,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

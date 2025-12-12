@@ -388,9 +388,9 @@ def create_ei_heatmaps(save_dir):
     
     plt.suptitle('Branin Function: GP Posterior and Expected Improvement', fontsize=13)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'ei_heatmaps.png'), dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, 'selected_branin_ei_heatmaps.png'), dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved: ei_heatmaps.png")
+    print("Saved: selected_branin_ei_heatmaps.png")
     
     # Interpretation
     print("\nInterpretation:")
@@ -558,9 +558,9 @@ def plot_learning_curves(results, save_dir):
     
     plt.suptitle('Learning Curves: BO vs Random Search', fontsize=13)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'learning_curves.png'), dpi=150, bbox_inches='tight')
+    plt.savefig(os.path.join(save_dir, 'selected_bo_vs_rs_learning_curves.png'), dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved: learning_curves.png")
+    print("Saved: selected_bo_vs_rs_learning_curves.png")
 
 
 def compute_statistics(results, save_dir):
@@ -664,8 +664,8 @@ def main():
     print("SUMMARY")
     print("=" * 70)
     print("\nFiles generated:")
-    print("  - ei_heatmaps.png")
-    print("  - learning_curves.png")
+    print("  - selected_branin_ei_heatmaps.png")
+    print("  - selected_bo_vs_rs_learning_curves.png")
     
     print("\nKey findings:")
     for name, stats in stats_results.items():

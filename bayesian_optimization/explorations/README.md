@@ -18,7 +18,6 @@ Final gap at 35 evaluations (20 paired runs):
 - Log + SE with corrected noise: gap ≈ 0.995 ± 0.002  
 - **Original scale + SE + Periodic(x1): gap ≈ 1.000 ± 0.000 (relative to pool optimum)**  
 
-Learning curves comparing these variants are saved as `branin_bo_learning_comparison.png`.
+Learning curves comparing these variants are saved as `exp_branin_bo_learning_comparison.png`.
 
 **Takeaway:** Fixing noise scaling and using the structure‑matched periodic kernel yields the strongest Branin BO performance. This setup is now used in the main `bayesian_optimization.py` and report.
-

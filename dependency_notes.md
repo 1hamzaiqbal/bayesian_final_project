@@ -101,7 +101,7 @@ To keep the project feeling like one connected investigation (instead of three m
 ### Source of truth
 
 - The canonical narratives live in `data_visualization/report.md`, `model_fitting/report.md`, `bayesian_optimization/report.md`, and `bonus/report.md`.
-- Any PDFs (`*_report.pdf`, `report.pdf`) are treated as *derived artifacts* and can drift; if we keep them, we should label them as `legacy_*.pdf` unless we regenerate them from the current markdown.
+- Any PDFs (`*_report.pdf`, `report.pdf`) are treated as *derived artifacts* and can drift; if we keep them, we should store them under `archive/` unless we regenerate them from the current markdown.
 
 ### Naming convention
 
@@ -111,8 +111,8 @@ To keep the project feeling like one connected investigation (instead of three m
   - Example: `selected_branin_surrogate_*`
 - **Explorations:** live under `*/explorations/` and use `exp_` prefix when ambiguous
   - Example: `explorations/exp_branin_model_comparison.png`
-- **Legacy/stale:** prefix `legacy_` (or move into `legacy/` subfolder)
-  - Example: `legacy_kappa_sensitivity.png`
+- **Legacy/stale:** prefix `legacy_` (or move into an `archive/` subfolder)
+  - Example: `archive/legacy_kappa_sensitivity.png`
 
 ### Minimal “carryover headers” in each report
 

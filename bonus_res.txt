@@ -1,0 +1,405 @@
+======================================================================
+BONUS: ACQUISITION FUNCTION COMPARISON STUDY
+======================================================================
+======================================================================
+ACQUISITION FUNCTION COMPARISON
+======================================================================
+NOTE: All methods share identical init points per run (proper pairing)
+NOTE: Gap computed on original y; GP may model transformed y per dataset
+
+==================================================
+  Branin DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Testing Random...
+      Mean gap: 0.5375 ± 0.4010
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.9453 ± 0.0896
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.9453 ± 0.0896
+    Testing LCB (κ=1)...
+      Mean gap: 0.9453 ± 0.0896
+    Testing LCB (κ=2)...
+      Mean gap: 0.9453 ± 0.0896
+
+  Observation noise σ = 0.100
+    Testing Random...
+      Mean gap: 0.6956 ± 0.3713
+    Testing EI (ξ=0.01)...
+      Mean gap: 1.0000 ± 0.0000
+    Testing PI (ξ=0.01)...
+      Mean gap: 1.0000 ± 0.0000
+    Testing LCB (κ=1)...
+      Mean gap: 0.9826 ± 0.0289
+    Testing LCB (κ=2)...
+      Mean gap: 0.9988 ± 0.0023
+
+  Observation noise σ = 1.000
+    Testing Random...
+      Mean gap: 0.6849 ± 0.3634
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.8000 ± 0.4000
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.8000 ± 0.4000
+    Testing LCB (κ=1)...
+      Mean gap: 0.8000 ± 0.4000
+    Testing LCB (κ=2)...
+      Mean gap: 0.8000 ± 0.4000
+
+  Observation noise σ = 5.000
+    Testing Random...
+      Mean gap: 0.5537 ± 0.4599
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.6000 ± 0.4899
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.6000 ± 0.4899
+    Testing LCB (κ=1)...
+      Mean gap: 0.6000 ± 0.4899
+    Testing LCB (κ=2)...
+      Mean gap: 0.6000 ± 0.4899
+
+==================================================
+  LDA DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Testing Random...
+      Mean gap: 0.6810 ± 0.3625
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.9263 ± 0.1204
+    Testing PI (ξ=0.01)...
+      Mean gap: 1.0000 ± 0.0000
+    Testing LCB (κ=1)...
+      Mean gap: 0.9884 ± 0.0233
+    Testing LCB (κ=2)...
+      Mean gap: 0.9010 ± 0.1154
+
+  Observation noise σ = 0.100
+    Testing Random...
+      Mean gap: 0.8797 ± 0.1976
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.9874 ± 0.0225
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.9902 ± 0.0171
+    Testing LCB (κ=1)...
+      Mean gap: 0.9989 ± 0.0019
+    Testing LCB (κ=2)...
+      Mean gap: 0.7019 ± 0.3658
+
+  Observation noise σ = 1.000
+    Testing Random...
+      Mean gap: 0.8719 ± 0.0613
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.9113 ± 0.0805
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.9206 ± 0.0865
+    Testing LCB (κ=1)...
+      Mean gap: 0.9162 ± 0.0915
+    Testing LCB (κ=2)...
+      Mean gap: 0.9162 ± 0.0915
+
+  Observation noise σ = 5.000
+    Testing Random...
+      Mean gap: 0.5551 ± 0.4194
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.9713 ± 0.0427
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.9713 ± 0.0427
+    Testing LCB (κ=1)...
+      Mean gap: 0.9661 ± 0.0445
+    Testing LCB (κ=2)...
+      Mean gap: 0.9661 ± 0.0445
+
+==================================================
+  SVM DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Testing Random...
+      Mean gap: 0.6027 ± 0.3415
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.5049 ± 0.4208
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.6281 ± 0.4294
+    Testing LCB (κ=1)...
+      Mean gap: 0.9935 ± 0.0112
+    Testing LCB (κ=2)...
+      Mean gap: 0.9693 ± 0.0614
+
+  Observation noise σ = 0.100
+    Testing Random...
+      Mean gap: 0.0000 ± 0.0000
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=1)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=2)...
+      Mean gap: 0.0000 ± 0.0000
+
+  Observation noise σ = 1.000
+    Testing Random...
+      Mean gap: 0.0000 ± 0.0000
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=1)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=2)...
+      Mean gap: 0.0000 ± 0.0000
+
+  Observation noise σ = 5.000
+    Testing Random...
+      Mean gap: 0.0000 ± 0.0000
+    Testing EI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing PI (ξ=0.01)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=1)...
+      Mean gap: 0.0000 ± 0.0000
+    Testing LCB (κ=2)...
+      Mean gap: 0.0000 ± 0.0000
+
+✓ All runs verified: All methods share identical initial points per run
+
+======================================================================
+CREATING COMPARISON PLOTS
+======================================================================
+Saved: acquisition_comparison.png
+Saved: acquisition_mean_gap.png
+
+======================================================================
+STATISTICAL ANALYSIS AND RANKINGS
+======================================================================
+NOTE: p > 0.05 means 'no significant difference', not 'equivalence'
+NOTE: Multiple comparisons not corrected (interpret with caution)
+
+==================================================
+  Branin DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     EI (ξ=0.01)     0.9453       ±0.0401   
+    2     PI (ξ=0.01)     0.9453       ±0.0401   
+    3     LCB (κ=1)       0.9453       ±0.0401   
+    4     LCB (κ=2)       0.9453       ±0.0401   
+    5     Random          0.5375       ±0.1793   
+
+    Paired t-tests (EI (ξ=0.01) vs others):
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs Random      : t=  2.399, p=0.0744, d=+1.40 (n.s.)
+
+  Observation noise σ = 0.100
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     EI (ξ=0.01)     1.0000       ±0.0000   
+    2     PI (ξ=0.01)     1.0000       ±0.0000   
+    3     LCB (κ=2)       0.9988       ±0.0010   
+    4     LCB (κ=1)       0.9826       ±0.0129   
+    5     Random          0.6956       ±0.1660   
+
+    Paired t-tests (EI (ξ=0.01) vs others):
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  1.000, p=0.3739, d=+0.71 (n.s.)
+      vs LCB (κ=1)   : t=  1.205, p=0.2947, d=+0.85 (n.s.)
+      vs Random      : t=  1.639, p=0.1765, d=+1.16 (n.s.)
+
+  Observation noise σ = 1.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     EI (ξ=0.01)     0.8000       ±0.1789   
+    2     PI (ξ=0.01)     0.8000       ±0.1789   
+    3     LCB (κ=1)       0.8000       ±0.1789   
+    4     LCB (κ=2)       0.8000       ±0.1789   
+    5     Random          0.6849       ±0.1625   
+
+    Paired t-tests (EI (ξ=0.01) vs others):
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs Random      : t=  1.711, p=0.1622, d=+0.30 (n.s.)
+
+  Observation noise σ = 5.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     EI (ξ=0.01)     0.6000       ±0.2191   
+    2     PI (ξ=0.01)     0.6000       ±0.2191   
+    3     LCB (κ=1)       0.6000       ±0.2191   
+    4     LCB (κ=2)       0.6000       ±0.2191   
+    5     Random          0.5537       ±0.2057   
+
+    Paired t-tests (EI (ξ=0.01) vs others):
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs Random      : t=  1.000, p=0.3739, d=+0.10 (n.s.)
+
+==================================================
+  LDA DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     PI (ξ=0.01)     1.0000       ±0.0000   
+    2     LCB (κ=1)       0.9884       ±0.0104   
+    3     EI (ξ=0.01)     0.9263       ±0.0538   
+    4     LCB (κ=2)       0.9010       ±0.0516   
+    5     Random          0.6810       ±0.1621   
+
+    Paired t-tests (PI (ξ=0.01) vs others):
+      vs LCB (κ=1)   : t=  1.000, p=0.3739, d=+0.71 (n.s.)
+      vs EI (ξ=0.01) : t=  1.224, p=0.2880, d=+0.87 (n.s.)
+      vs LCB (κ=2)   : t=  1.717, p=0.1612, d=+1.21 (n.s.)
+      vs Random      : t=  1.760, p=0.1533, d=+1.24 (n.s.)
+
+  Observation noise σ = 0.100
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     LCB (κ=1)       0.9989       ±0.0009   
+    2     PI (ξ=0.01)     0.9902       ±0.0076   
+    3     EI (ξ=0.01)     0.9874       ±0.0101   
+    4     Random          0.8797       ±0.0884   
+    5     LCB (κ=2)       0.7019       ±0.1636   
+
+    Paired t-tests (LCB (κ=1) vs others):
+      vs PI (ξ=0.01) : t=  1.000, p=0.3739, d=+0.72 (n.s.)
+      vs EI (ξ=0.01) : t=  1.000, p=0.3739, d=+0.72 (n.s.)
+      vs Random      : t=  1.218, p=0.2900, d=+0.85 (n.s.)
+      vs LCB (κ=2)   : t=  1.621, p=0.1804, d=+1.15 (n.s.)
+
+  Observation noise σ = 1.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     PI (ξ=0.01)     0.9206       ±0.0387   
+    2     LCB (κ=1)       0.9162       ±0.0409   
+    3     LCB (κ=2)       0.9162       ±0.0409   
+    4     EI (ξ=0.01)     0.9113       ±0.0360   
+    5     Random          0.8719       ±0.0274   
+
+    Paired t-tests (PI (ξ=0.01) vs others):
+      vs LCB (κ=1)   : t=  1.000, p=0.3739, d=+0.05 (n.s.)
+      vs LCB (κ=2)   : t=  1.000, p=0.3739, d=+0.05 (n.s.)
+      vs EI (ξ=0.01) : t=  1.000, p=0.3739, d=+0.11 (n.s.)
+      vs Random      : t=  2.554, p=0.0630, d=+0.65 (n.s.)
+
+  Observation noise σ = 5.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     EI (ξ=0.01)     0.9713       ±0.0191   
+    2     PI (ξ=0.01)     0.9713       ±0.0191   
+    3     LCB (κ=1)       0.9661       ±0.0199   
+    4     LCB (κ=2)       0.9661       ±0.0199   
+    5     Random          0.5551       ±0.1875   
+
+    Paired t-tests (EI (ξ=0.01) vs others):
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  1.000, p=0.3739, d=+0.12 (n.s.)
+      vs LCB (κ=2)   : t=  1.000, p=0.3739, d=+0.12 (n.s.)
+      vs Random      : t=  1.852, p=0.1377, d=+1.40 (n.s.)
+
+==================================================
+  SVM DATASET
+==================================================
+
+  Observation noise σ = 0.001
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     LCB (κ=1)       0.9935       ±0.0050   
+    2     LCB (κ=2)       0.9693       ±0.0274   
+    3     PI (ξ=0.01)     0.6281       ±0.1920   
+    4     Random          0.6027       ±0.1527   
+    5     EI (ξ=0.01)     0.5049       ±0.1882   
+
+    Paired t-tests (LCB (κ=1) vs others):
+      vs LCB (κ=2)   : t=  0.739, p=0.5012, d=+0.55 (n.s.)
+      vs PI (ξ=0.01) : t=  1.681, p=0.1680, d=+1.20 (n.s.)
+      vs Random      : t=  2.278, p=0.0850, d=+1.62 (n.s.)
+      vs EI (ξ=0.01) : t=  2.305, p=0.0825, d=+1.64 (n.s.)
+
+  Observation noise σ = 0.100
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     Random          0.0000       ±0.0000   
+    2     EI (ξ=0.01)     0.0000       ±0.0000   
+    3     PI (ξ=0.01)     0.0000       ±0.0000   
+    4     LCB (κ=1)       0.0000       ±0.0000   
+    5     LCB (κ=2)       0.0000       ±0.0000   
+
+    Paired t-tests (Random vs others):
+      vs EI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+
+  Observation noise σ = 1.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     Random          0.0000       ±0.0000   
+    2     EI (ξ=0.01)     0.0000       ±0.0000   
+    3     PI (ξ=0.01)     0.0000       ±0.0000   
+    4     LCB (κ=1)       0.0000       ±0.0000   
+    5     LCB (κ=2)       0.0000       ±0.0000   
+
+    Paired t-tests (Random vs others):
+      vs EI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+
+  Observation noise σ = 5.000
+    Rankings (n=5 runs):
+    Rank  Acquisition     Mean Gap     ±SE       
+    ---------------------------------------------
+    1     Random          0.0000       ±0.0000   
+    2     EI (ξ=0.01)     0.0000       ±0.0000   
+    3     PI (ξ=0.01)     0.0000       ±0.0000   
+    4     LCB (κ=1)       0.0000       ±0.0000   
+    5     LCB (κ=2)       0.0000       ±0.0000   
+
+    Paired t-tests (Random vs others):
+      vs EI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs PI (ξ=0.01) : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=1)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+      vs LCB (κ=2)   : t=  0.000, p=1.0000, d=+0.00 (n.s.)
+
+======================================================================
+SUMMARY
+======================================================================
+
+Best acquisition function by dataset & noise level:
+  Branin (σ=0.00): EI (ξ=0.01) (gap = 0.9453)
+  Branin (σ=0.10): EI (ξ=0.01) (gap = 1.0000)
+  Branin (σ=1.00): EI (ξ=0.01) (gap = 0.8000)
+  Branin (σ=5.00): EI (ξ=0.01) (gap = 0.6000)
+  LDA (σ=0.00): PI (ξ=0.01) (gap = 1.0000)
+  LDA (σ=0.10): LCB (κ=1) (gap = 0.9989)
+  LDA (σ=1.00): PI (ξ=0.01) (gap = 0.9206)
+  LDA (σ=5.00): EI (ξ=0.01) (gap = 0.9713)
+  SVM (σ=0.00): LCB (κ=1) (gap = 0.9935)
+  SVM (σ=0.10): Random (gap = 0.0000)
+  SVM (σ=1.00): Random (gap = 0.0000)
+  SVM (σ=5.00): Random (gap = 0.0000)
+
+Files generated:
+  - acquisition_comparison.png
+  - acquisition_mean_gap.png
+  - explorations/exp_branin_kappa_sensitivity.png

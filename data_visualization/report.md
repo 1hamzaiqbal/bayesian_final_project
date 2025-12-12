@@ -106,6 +106,19 @@ $$g(x_1, x_2) = \log(f(x_1, x_2) + 1)$$
 - Preserves the locations of minima and overall structure
 - Makes the function more amenable to a stationary GP
 
+### Exploration: `sqrt(f)` can be more “stationarizing” than `log(f+1)`
+
+The max/min gradient ratio above is a useful sanity check, but it is sensitive to near‑zero gradients. In `data_visualization/explorations/`, we compared transforms using a more robust proxy: the **p95/p5 ratio of** $|\nabla F|$ (lower = more uniform local curvature).
+
+On Branin, `sqrt(f)` reduces curvature variation more than `log(f+1)`:
+- identity: p95/p5 ≈ 15.00  
+- log(f+1): p95/p5 ≈ 9.35  
+- **sqrt(f): p95/p5 ≈ 5.16**  
+
+![Branin Transform Stationarity Sweep](explorations/exp_branin_transform_stationarity_grid.png)
+
+**Practical takeaway:** if the goal is to make a stationary kernel with a single global lengthscale “less wrong”, `sqrt(f)` is a strong candidate. That said, later sections validate transforms by predictive behavior and calibration, not only this proxy.
+
 ---
 
 ## 4. Kernel Density Estimates for LDA and SVM Benchmarks
@@ -185,6 +198,18 @@ $$y' = \log(y)$$
 
 **Hypothesis to test:** Log transforms are a reasonable candidate for improving GP fit quality. We will compare marginal likelihood and calibration with and without transforms in the model-fitting section to validate this empirically.
 
+### Explorations: power transforms and input scaling
+
+Two additional findings (see `data_visualization/explorations/exploratory_results.md`):
+
+1. **Output power transforms (Box-Cox)** can make the objective distributions far more symmetric than log alone (skew drops to ~0.3 for both LDA and SVM).
+
+![Benchmark Output Transform Sweep](explorations/exp_benchmark_output_transform_zscore_kde.png)
+
+2. **Input scaling is critical**: LDA/SVM hyperparameters span orders of magnitude, so using raw hyperparameter units can induce strong apparent non‑stationarity. Using log10 coordinates on the high‑dynamic‑range dimensions substantially reduces the variation of $|\nabla f|$ over the grid (especially for SVM).
+
+![Benchmark Input Scaling Stationarity Proxy](explorations/exp_benchmark_input_scaling_gradmag_kde.png)
+
 ---
 
 ## Carryover to Model Fitting
@@ -192,7 +217,9 @@ $$y' = \log(y)$$
 This section motivates (but does not yet validate) modeling choices that the next section tests quantitatively:
 
 - **Branin:** strong anisotropy and an explicit periodic component in $x_1$ (period $\approx 2\pi$) suggest ARD kernels and/or a periodic kernel component as candidates.
-- **LDA/SVM:** right-skewed objectives motivate trying variance‑compressing transforms (log / log(y+1)), and for bounded metrics (SVM) possibly logit or arcsin‑sqrt.
+- **Branin (output transforms):** log(f+1) is a simple stationarizing transform; explorations suggest **sqrt(f)** may reduce curvature variation even more.
+- **LDA/SVM (outputs):** right-skewed objectives motivate trying variance‑compressing transforms (log / log(y+1)), and explorations show **Box‑Cox** can reduce skewness further.
+- **LDA/SVM (inputs):** hyperparameter grids span orders of magnitude; explorations suggest log-scaling positive hyperparameters is an important “stationarizing” step for GP modeling.
 
 In `model_fitting/report.md` we explicitly evaluate these candidates using marginal likelihood, BIC, and calibration diagnostics.
 
@@ -204,12 +231,13 @@ In `model_fitting/report.md` we explicitly evaluate these candidates using margi
 |--------|----------|--------|
 | 1 | Heatmap created? | Yes - 1000×1000 grid with 3 marked global minima |
 | 2 | Will a stationary GP fit well? | **No** - varying curvature (gradient ratio: 3237×) |
-| 3 | Transformation for stationarity? | **log(f+1)** reduces gradient ratio to 852× |
+| 3 | Transformation for stationarity? | **log(f+1)** helps; explorations suggest **sqrt(f)** can further reduce curvature variation |
 | 4 | KDE interpretation? | Both LDA and SVM are **right-skewed** |
-| 5 | Transformation for better behavior? | **log(y)** reduces skewness by 17–43% |
+| 5 | Transformation for better behavior? | **log(y)** helps; explorations suggest **Box‑Cox** and input log-scaling can help further |
 
 **Key takeaways:**
 1. Use ARD kernels to capture anisotropic behavior
 2. Log transforms help variance compression and reduce extreme leverage
-3. For bounded metrics, consider logit or arcsin-sqrt transforms
-4. We will validate transform choices empirically via marginal likelihood/calibration in model fitting
+3. For bounded metrics, consider transforms carefully (mass at boundaries can break logit)
+4. For LDA/SVM, log-scaling hyperparameter inputs is often as important as output transforms
+5. We will validate transform choices empirically via marginal likelihood/calibration in model fitting

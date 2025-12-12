@@ -110,7 +110,7 @@ def compute_gap(f_best_found, f_best_initial, f_optimum):
     return np.clip(gap, 0, 1)
 
 
-def bayesian_optimization(X_pool, y_pool, kernel, n_initial=5, n_iterations=30, 
+def bayesian_optimization(X_pool, y_pool, kernel, run_num, n_initial=5, n_iterations=30, 
                           use_log_transform=False, verbose=False):
     """
     Run Bayesian optimization experiment.
@@ -144,7 +144,7 @@ def bayesian_optimization(X_pool, y_pool, kernel, n_initial=5, n_iterations=30,
     best_so_far = []
     
     # Random initialization
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(run_num*42)
     init_indices = rng.choice(n_pool, size=n_initial, replace=False)
     
     for idx in init_indices:
@@ -201,7 +201,7 @@ def bayesian_optimization(X_pool, y_pool, kernel, n_initial=5, n_iterations=30,
     }
 
 
-def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, verbose=False):
+def random_search(X_pool, y_pool, run_num, n_initial=5, n_iterations=30, verbose=False):
     """Run random search experiment."""
     n_pool = len(X_pool)
     available = np.ones(n_pool, dtype=bool)
@@ -210,7 +210,7 @@ def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, verbose=False):
     y_values = []
     best_so_far = []
     
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(run_num*42)
     init_indices = rng.choice(n_pool, size=n_initial, replace=False)
     
     for idx in init_indices:
@@ -366,9 +366,11 @@ def run_experiments(n_runs=20, save_dir=None):
         print(f"Pool size: {len(X_pool)}, Optimum: {f_opt:.6f}")
         
         bo_results = []
+        bo_results30 = []
         rs_results = []
         if name.lower() == 'svm' or name.lower() == 'lda':
             kernel = ConstantKernel(1.0) * RationalQuadratic(length_scale=1.0, alpha=1.0)
+            # kernel = ConstantKernel(1.0) * Matern(length_scale=[1.0]*3, nu=2.5)
         else:
             kernel = ConstantKernel(1.0) * Matern(length_scale=[1.0]*2, nu=2.5)
         
@@ -376,18 +378,24 @@ def run_experiments(n_runs=20, save_dir=None):
             np.random.seed(run * 42)  # Different seed for each run
             
             # Bayesian optimization (5 initial + 30 iterations = 35 total)
+            bo_history_30 = bayesian_optimization(
+                X_pool, y_pool, kernel, run, n_initial=5, n_iterations=25, 
+                use_log_transform=use_log, verbose=False
+            )
+
             bo_history = bayesian_optimization(
-                X_pool, y_pool, kernel, n_initial=5, n_iterations=30, 
+                X_pool, y_pool, kernel, run, n_initial=5, n_iterations=30, 
                 use_log_transform=use_log, verbose=False
             )
             
             # Random search (5 initial + 145 more = 150 total)
             np.random.seed(run * 42)  # Same initialization
             rs_history = random_search(
-                X_pool, y_pool, n_initial=5, n_iterations=145, verbose=False
+                X_pool, y_pool, run, n_initial=5, n_iterations=145, verbose=False
             )
             
             bo_results.append(bo_history)
+            bo_results30.append(bo_history_30)
             rs_results.append(rs_history)
             
             if (run + 1) % 5 == 0:
@@ -395,6 +403,7 @@ def run_experiments(n_runs=20, save_dir=None):
         
         results[name] = {
             'bo': bo_results,
+            'bo30': bo_results30,
             'rs': rs_results,
             'f_opt': f_opt
         }
@@ -437,16 +446,16 @@ def plot_learning_curves(results, save_dir):
         x_rs = np.arange(1, n_obs_rs + 1)
         
         ax.plot(x_bo, bo_gaps.mean(axis=0), 'b-', linewidth=2, label='BO (EI)')
-        # ax.fill_between(x_bo, 
-        #                 bo_gaps.mean(axis=0) - bo_gaps.std(axis=0),
-        #                 bo_gaps.mean(axis=0) + bo_gaps.std(axis=0),
-        #                 alpha=0.2, color='b')
+        ax.fill_between(x_bo, 
+                        bo_gaps.mean(axis=0) - bo_gaps.std(axis=0),
+                        bo_gaps.mean(axis=0) + bo_gaps.std(axis=0),
+                        alpha=0.2, color='b')
         
         ax.plot(x_rs, rs_gaps.mean(axis=0), 'r--', linewidth=2, label='Random Search')
-        # ax.fill_between(x_rs,
-        #                 rs_gaps.mean(axis=0) - rs_gaps.std(axis=0),
-        #                 rs_gaps.mean(axis=0) + rs_gaps.std(axis=0),
-        #                 alpha=0.2, color='r')
+        ax.fill_between(x_rs,
+                        rs_gaps.mean(axis=0) - rs_gaps.std(axis=0),
+                        rs_gaps.mean(axis=0) + rs_gaps.std(axis=0),
+                        alpha=0.2, color='r')
         
         ax.set_xlabel('Number of Observations')
         ax.set_ylabel('Gap')
@@ -487,6 +496,16 @@ def compute_statistics(results, save_dir):
             bo_final_gaps.append(gap)
         
         bo_final_gaps = np.array(bo_final_gaps)
+
+        # Final gaps for BO (at 30 observations)
+        bo30_final_gaps = []
+        for run in data['bo30']:
+            f_best_initial = run['best_so_far'][4]
+            f_best_found = run['best_so_far'][-1]
+            gap = compute_gap(f_best_found, f_best_initial, f_opt)
+            bo30_final_gaps.append(gap)
+        
+        bo30_final_gaps = np.array(bo30_final_gaps)
         
         # Gaps for RS at different observation counts
         rs_gaps_at = {}
@@ -503,7 +522,8 @@ def compute_statistics(results, save_dir):
         # Print results
         print(f"\nMean Gap (+/- std):")
         print(f"  BayesOpt (35 obs):          {bo_final_gaps.mean():.4f} +/- {bo_final_gaps.std():.4f}")
-        
+        print(f"  BayesOpt (30 obs):          {bo30_final_gaps.mean():.4f} +/- {bo30_final_gaps.std():.4f}")
+
         for n_obs in [30, 60, 90, 120, 150]:
             gaps = rs_gaps_at[n_obs]
             print(f"  RS ({n_obs:3d} obs):        {gaps.mean():.4f} +/- {gaps.std():.4f}")
@@ -517,14 +537,14 @@ def compute_statistics(results, save_dir):
                 t_stat, p_value = stats.ttest_rel(bo_final_gaps, rs_gaps_at[n_obs])
                 print(f"  RS@{n_obs:3d}: t={t_stat:7.3f}, p={p_value:.4f}", end="")
                 if p_value < 0.05:
-                    print(" *")
+                    print(" (significant)")
                 else:
                     print("")
                     if speedup is None:
                         speedup = n_obs
         
         if speedup:
-            print(f"\n  Speedup: BayesOpt needs ~35 obs to match RS at ~{speedup} obs")
+            print(f"\n  Speedup: BayesOpt needs ~30 obs to match RS at ~{speedup} obs")
             print(f"  -> BayesOpt is ~{speedup/30:.1f}x faster than random search")
         
         stats_results[name] = {

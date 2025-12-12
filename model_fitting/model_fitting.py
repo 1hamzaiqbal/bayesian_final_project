@@ -596,9 +596,10 @@ def analyze_high_noise(X_train, y_train, save_dir):
     
     plt.suptitle('GP Posterior with High Noise Level (σ=10)', fontsize=12)
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "high_noise_posterior_heatmaps.png"), dpi=150, bbox_inches='tight')
+    os.makedirs(os.path.join(save_dir, "explorations"), exist_ok=True)
+    plt.savefig(os.path.join(save_dir, "explorations", "exp_high_noise_posterior_heatmaps.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved: high_noise_posterior_heatmaps.png")
+    print("Saved: explorations/exp_high_noise_posterior_heatmaps.png")
     
     # Check posterior std at training points
     y_pred_train, y_std_train = gp_high_noise.predict(X_train, return_std=True)
@@ -821,7 +822,7 @@ def main():
     
     print("\nFiles generated:")
     print("  - original_posterior_heatmaps.png")
-    print("  - high_noise_posterior_heatmaps.png")
+    print("  - explorations/exp_high_noise_posterior_heatmaps.png")
     print("  - zscore_original.png")
     print("  - log_transformed_posterior_heatmaps.png")
     print("  - zscore_log_transformed.png")

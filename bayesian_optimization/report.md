@@ -18,6 +18,18 @@ This section implements Bayesian optimization using Expected Improvement (EI) an
 
 ---
 
+## Dependencies and Carryover
+
+**Inputs from `model_fitting/report.md` (what we “fix” before BO):**
+- **Branin:** original scale GP with **SE + Periodic(x1)** kernel.
+- **LDA/SVM:** **Matern 3/2** GP with **log(y+1)** transform.
+
+**Branin dataset reuse (hard dependency):** the EI heatmaps below use the *same* 32 Sobol points from the model‑fitting section (seed=42), as required by the prompt.
+
+During BO, we keep the **model form** fixed (kernel/transform) but re‑fit hyperparameters by marginal likelihood on the evolving dataset each iteration.
+
+---
+
 ## 1. Expected Improvement Implementation
 
 From Snoek et al. (2012), Equation (2), the Expected Improvement for **minimization** is:

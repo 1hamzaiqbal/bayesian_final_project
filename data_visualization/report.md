@@ -187,6 +187,17 @@ $$y' = \log(y)$$
 
 ---
 
+## Carryover to Model Fitting
+
+This section motivates (but does not yet validate) modeling choices that the next section tests quantitatively:
+
+- **Branin:** strong anisotropy and an explicit periodic component in $x_1$ (period $\approx 2\pi$) suggest ARD kernels and/or a periodic kernel component as candidates.
+- **LDA/SVM:** right-skewed objectives motivate trying variance‑compressing transforms (log / log(y+1)), and for bounded metrics (SVM) possibly logit or arcsin‑sqrt.
+
+In `model_fitting/report.md` we explicitly evaluate these candidates using marginal likelihood, BIC, and calibration diagnostics.
+
+---
+
 ## Summary
 
 | Bullet | Question | Answer |

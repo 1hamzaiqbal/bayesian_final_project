@@ -23,6 +23,20 @@ This report addresses each bullet point from the [instructions](instructions.md)
 
 ---
 
+## Dependencies and Carryover
+
+**Inputs from `data_visualization/report.md`:**
+- Branin shows anisotropy and an explicit periodic component in $x_1$, motivating ARD kernels and periodic components as candidates.
+- LDA/SVM distributions are right‑skewed, motivating log‑style transforms as candidates.
+
+**Outputs carried forward to `bayesian_optimization/report.md` (model choices):**
+- **Branin (selected surrogate):** original scale, constant mean, **SE + Periodic(x1)** kernel (selected by BIC + predictive behavior).
+- **LDA/SVM (selected surrogate):** **Matern 3/2** kernel with **log(y+1)** transform (selected by BIC search on 32‑point subsamples).
+
+We keep the prompt-required **baseline SE GP** results below for diagnostics, but downstream BO uses the *selected* models above.
+
+---
+
 ## 1. Training Data Generation
 
 > **Bullet 1:** *"Select a set of 32 training points for the Branin function in the domain X = [−5, 10] × [0, 15] using a Sobol sequence."*

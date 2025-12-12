@@ -624,9 +624,10 @@ def create_kappa_sensitivity_plot(save_dir):
                 fontsize=9)
     
     plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'kappa_sensitivity.png'), dpi=150, bbox_inches='tight')
+    os.makedirs(os.path.join(save_dir, "explorations"), exist_ok=True)
+    plt.savefig(os.path.join(save_dir, "explorations", "exp_branin_kappa_sensitivity.png"), dpi=150, bbox_inches='tight')
     plt.close()
-    print("Saved: kappa_sensitivity.png")
+    print("Saved: explorations/exp_branin_kappa_sensitivity.png")
     
     # Print full table
     print(f"\n  κ Sensitivity Results (n={n_runs} runs, shared init):")
@@ -673,7 +674,7 @@ def main():
     
     print("\nFiles generated:")
     print("  - acquisition_comparison.png")
-    print("  - kappa_sensitivity.png")
+    print("  - explorations/exp_branin_kappa_sensitivity.png")
 
 
 if __name__ == "__main__":

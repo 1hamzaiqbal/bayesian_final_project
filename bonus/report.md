@@ -4,6 +4,17 @@ This section compares multiple acquisition functions for Bayesian optimization.
 
 ---
 
+## Dependencies and Carryover
+
+This bonus section intentionally builds on earlier parts of the project:
+
+- **From `model_fitting/report.md`:** we reuse the chosen surrogate model *forms* (kernel + transform) per dataset.
+- **From `bayesian_optimization/report.md`:** we reuse the experimental protocol (5 shared init points, 30 BO iterations), the **gap** metric, and paired comparisons across methods.
+
+The new goal here is to compare *acquisition functions* while holding the surrogate modeling choices fixed and clearly documented.
+
+---
+
 ## Methodology
 
 ### Acquisition Functions Compared

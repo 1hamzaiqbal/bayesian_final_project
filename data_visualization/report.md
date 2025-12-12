@@ -45,22 +45,39 @@ with standard parameters $a=1$, $b=\frac{5.1}{4\pi^2}$, $c=\frac{5}{\pi}$, $r=6$
 
 > **Bullet 2:** *"Describe the behavior of the function. Does it appear stationary? (That is, does the behavior of the function appear to be relatively constant throughout the domain?)"*
 
-**Does it appear stationary?** No. **The Branin function is non-stationary.** This is evident from several observations:
+**Note on terminology:** In GP theory, "stationarity" refers to a kernel property (covariance depends only on displacement), not an intrinsic function property. A deterministic function doesn't have "stationarity" as such—what we're really asking is: **Will a stationary GP with a single global lengthscale fit well?**
 
-1. **Varying Magnitude:** The function values span a dramatic range from 0.4 to 308, indicating non-constant behavior across the domain.
+**Answer: A stationary GP with a single lengthscale will struggle** because the function exhibits regions of very different curvature and amplitude across the domain.
 
-2. **Asymmetric Structure:** The three global minima are not uniformly distributed—two lie near $x_2 \approx 2.5$ while one is at $x_2 \approx 12.3$, creating an asymmetric landscape.
+### Evidence for Model Mismatch
 
-3. **Quadratic Component:** The term $a(x_2 - bx_1^2 + cx_1 - r)^2$ creates a parabolic valley whose curvature varies with position.
+1. **Non-constant amplitude:** Values range from 0.4 to 308—a stationary GP with one output scale cannot capture this variation.
 
-4. **Periodic Modulation:** The cosine term $s(1-t)\cos(x_1)$ adds oscillation in the $x_1$ direction only, creating wave-like patterns that interact with the quadratic structure.
+2. **Varying curvature:** Sharp curvature near minima, flatter behavior in high-value regions. A single lengthscale cannot capture both.
 
-5. **Edge Effects:** Function values are significantly higher near domain boundaries, especially at the corners.
+3. **Asymmetric structure:** The three global minima create valleys of varying depths and widths.
+
+4. **Anisotropic behavior:** The cosine term adds oscillation only in $x_1$ (period ~2π ≈ 6.3), suggesting different lengthscales are needed for each dimension.
+
+### Quantitative Support: Gradient Magnitude
+
+To support this claim quantitatively, we visualize the gradient magnitude $|\nabla f(x)|$ across the domain:
+
+![Gradient Magnitude Heatmap](gradient_magnitude_heatmap.png)
+
+**Figure 1b:** Gradient magnitude heatmaps. Left: Original function. Right: Log-transformed. Gradient magnitude relates to appropriate local lengthscale.
+
+| Metric | Original | Log-Transformed |
+|--------|----------|-----------------|
+| Gradient range | [0.04, 113.31] | [0.003, 2.86] |
+| Range ratio | 3237× | 852× |
+
+The extreme variation in gradient magnitude (3237×) demonstrates why a single lengthscale cannot work everywhere.
 
 **Implications for Bayesian Optimization:**
-- A stationary GP prior may struggle to model this varying behavior
-- The optimizer may require more samples in high-variance regions
-- Non-stationary or adaptive kernels may improve surrogate model quality
+- Use ARD (Automatic Relevance Determination) kernels with per-dimension lengthscales
+- Consider transformations (e.g., log) to compress amplitude variation
+- A stationary SE/Matérn kernel may require many training points in high-curvature regions
 
 ---
 
@@ -68,7 +85,7 @@ with standard parameters $a=1$, $b=\frac{5.1}{4\pi^2}$, $c=\frac{5}{\pi}$, $r=6$
 
 > **Bullet 3:** *"Can you find a transformation of the data that makes it more stationary?"*
 
-**Yes.** We apply a log transformation to compress the dynamic range and improve stationarity:
+**Yes.** We apply a log transformation to compress the dynamic range:
 
 $$g(x_1, x_2) = \log(f(x_1, x_2) + 1)$$
 
@@ -81,13 +98,13 @@ $$g(x_1, x_2) = \log(f(x_1, x_2) + 1)$$
 | Range | [0.40, 308.13] | [0.34, 5.73] |
 | Max/Min Ratio | ~750× | ~17× |
 | Std. Deviation | 51.35 | 1.12 |
+| Gradient range ratio | 3237× | 852× |
 
-**Why does this help stationarity?**
+**Why does this help?**
 - Compresses the dynamic range by a factor of ~44×
-- Reduces extreme values at domain boundaries
+- Reduces gradient variation, making local curvature more uniform
 - Preserves the locations of minima and overall structure
-- Provides approximate variance stabilization
-- Makes the function appear more uniform across the domain
+- Makes the function more amenable to a stationary GP
 
 ---
 
@@ -101,7 +118,7 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 
 ![KDE Plots](kde_lda_svm.png)
 
-**Figure 3:** Kernel density estimates of the objective value distributions. Dashed red lines indicate the minimum (best) performance.
+**Figure 3:** Histograms and KDEs for LDA and SVM benchmarks. Note: KDEs use SciPy's default bandwidth selection (Scott's rule); shapes should be interpreted qualitatively.
 
 ### LDA Benchmark
 | Statistic | Value |
@@ -112,7 +129,7 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 | Std. Dev. | 722.33 |
 | Skewness | 2.37 (right-skewed) |
 
-**Interpretation:** The LDA objective exhibits a right-skewed distribution with a long tail toward poor performance. Most configurations cluster around moderate values (1300–2000), while some produce very poor results (>3000). Optimal configurations are relatively rare.
+**Interpretation:** Right-skewed distribution with a long tail toward poor performance. Most configurations cluster around moderate values (1300–2000), while some produce very poor results (>3000). Optimal configurations are relatively rare.
 
 ### SVM Benchmark
 | Statistic | Value |
@@ -123,9 +140,11 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 | Std. Dev. | 0.0693 |
 | Skewness | 1.30 (right-skewed) |
 
-**Interpretation:** The SVM error rate clusters around 0.27–0.35, with outliers at 0.5 (random chance). The pronounced mode suggests many configurations achieve similar moderate performance. The minimum (~0.24) represents near-optimal classification accuracy.
+**Interpretation:** The error rate clusters around 0.27–0.35, with outliers at 0.5 (random chance). The minimum (~0.24) represents near-optimal classification accuracy.
 
-**Common Pattern:** Both distributions are right-skewed, reflecting a common property of hyperparameter landscapes—there are many ways to configure a model poorly but relatively few optimal configurations.
+> **Methodological note:** SVM error is a **bounded metric** (error rate ∈ [0, 0.5]). Gaussian KDEs can leak density outside the feasible range. For bounded metrics, consider boundary-corrected KDEs or transforms like logit.
+
+**Common Pattern:** Both distributions are right-skewed—common in hyperparameter landscapes where there are many ways to configure poorly but few optimal configurations.
 
 ---
 
@@ -133,13 +152,13 @@ We analyze the distribution of objective values for the hyperparameter tuning be
 
 > **Bullet 5:** *"Again, can you find a transformation that makes the performance better behaved?"*
 
-**Yes.** We apply a log transformation to both benchmark distributions to improve their statistical properties:
+**Yes.** We apply a log transformation to both benchmark distributions:
 
 $$y' = \log(y)$$
 
 ![Transformed KDE Plots](kde_lda_svm_transformed.png)
 
-**Figure 4:** Comparison of original (left) and log-transformed (right) distributions for both benchmarks.
+**Figure 4:** Comparison of original (left) and log-transformed (right) distributions.
 
 ### Skewness Reduction
 
@@ -148,17 +167,23 @@ $$y' = \log(y)$$
 | LDA | 2.368 | 1.353 | **42.9%** |
 | SVM | 1.302 | 1.078 | **17.2%** |
 
-**Why does log transformation make distributions "better behaved"?**
+### What Log Transforms Actually Help With
 
-1. **Improved Symmetry:** Both distributions become more symmetric (closer to Gaussian), which is beneficial for GP likelihood assumptions.
+> **Important clarification:** GP regression assumes Gaussian noise at each input point, NOT that the marginal distribution of y-values across different x's must be Gaussian. Reducing skewness is NOT directly about satisfying GP likelihood assumptions.
 
-2. **Variance Stabilization:** The variance becomes more uniform across the range of values.
+**Proper reasons for log transformation:**
 
-3. **Outlier Compression:** Extreme high values are compressed, reducing their influence on the GP fit.
+1. **Variance compression:** Reduces heteroscedastic-looking behavior; multiplicative effects become additive.
 
-4. **Normal Approximation:** Log-transformed data better approximates a Gaussian distribution.
+2. **Reduced leverage of extremes:** Extreme high values have less influence on GP hyperparameter fitting.
 
-**Recommendation:** Use log-transformed objective values when fitting Gaussian processes for Bayesian optimization on these benchmarks.
+3. **Stationary GP compatibility:** Stationary kernel fit becomes "less dominated" by big-amplitude regions.
+
+**For bounded metrics (like SVM error):**
+- Log is one reasonable choice, but not ideal for bounded data
+- Better alternatives: **logit** transform (after rescaling to (0,1)), **arcsin-sqrt** (classic variance stabilizer for proportions), or **Box-Cox / Yeo-Johnson** (learn the power transform)
+
+**Hypothesis to test:** Log transforms are a reasonable candidate for improving GP fit quality. We will compare marginal likelihood and calibration with and without transforms in the model-fitting section to validate this empirically.
 
 ---
 
@@ -167,7 +192,13 @@ $$y' = \log(y)$$
 | Bullet | Question | Answer |
 |--------|----------|--------|
 | 1 | Heatmap created? | Yes - 1000×1000 grid with 3 marked global minima |
-| 2 | Is Branin stationary? | **No** - varies from 0.4 to 308, asymmetric structure |
-| 3 | Transformation for stationarity? | **log(f+1)** reduces dynamic range 44× |
+| 2 | Will a stationary GP fit well? | **No** - varying curvature (gradient ratio: 3237×) |
+| 3 | Transformation for stationarity? | **log(f+1)** reduces gradient ratio to 852× |
 | 4 | KDE interpretation? | Both LDA and SVM are **right-skewed** |
 | 5 | Transformation for better behavior? | **log(y)** reduces skewness by 17–43% |
+
+**Key takeaways:**
+1. Use ARD kernels to capture anisotropic behavior
+2. Log transforms help variance compression and reduce extreme leverage
+3. For bounded metrics, consider logit or arcsin-sqrt transforms
+4. We will validate transform choices empirically via marginal likelihood/calibration in model fitting

@@ -1,111 +1,96 @@
 # Bonus: Acquisition Function Comparison Study
 
-## Motivation
+This section compares multiple acquisition functions for Bayesian optimization.
 
-The choice of acquisition function is a critical design decision in Bayesian optimization. While Expected Improvement (EI) is widely used, other acquisition functions may be more appropriate depending on the problem characteristics. This investigation compares three acquisition functions:
+---
 
-1. **Expected Improvement (EI)** — Maximizes expected improvement over current best
-2. **Probability of Improvement (PI)** — Maximizes probability of any improvement
-3. **GP Lower Confidence Bound (LCB)** — Balances mean and uncertainty with parameter κ
+## Methodology
 
-## Methods
-
-### Acquisition Function Formulas
-
-For **minimization** problems, we implement:
-
-| Function | Formula |
-|----------|---------|
-| EI | $\text{EI}(x) = \sigma(x) \left[ \gamma \Phi(\gamma) + \phi(\gamma) \right]$ |
-| PI | $\text{PI}(x) = \Phi(\gamma)$ |
-| LCB | $\text{LCB}(x) = \mu(x) - \kappa \sigma(x)$ |
-
-where $\gamma = \frac{f_{\text{best}} - \mu(x)}{\sigma(x)}$, $\Phi$ is the standard normal CDF, and $\phi$ is the PDF.
+### Acquisition Functions Compared
+- **Random Search** (baseline)
+- **EI (ξ=0.01)**: Expected Improvement with exploration margin
+- **PI (ξ=0.01)**: Probability of Improvement with exploration margin
+- **LCB (κ=1)**: Lower Confidence Bound with low exploration
+- **LCB (κ=2)**: Lower Confidence Bound with moderate exploration
 
 ### Experimental Setup
+| Parameter | Value |
+|-----------|-------|
+| Initial observations | 5 (random, **shared** across all methods) |
+| BO iterations | 30 |
+| Total evaluations | 35 |
+| GP Model | RBF kernel with **log(y+1)** transform |
+| Number of runs | 20 (paired comparison) |
 
-- **Datasets:** Branin (synthetic), LDA, SVM (real hyperparameter tuning)
-- **Protocol:** 5 initial random points + 30 BO iterations = 35 total observations
-- **Runs:** 20 independent trials per configuration
-- **LCB variants:** κ ∈ {1, 2, 3} to study exploration-exploitation trade-off
+> **IMPORTANT:** All acquisition functions share identical initial points per run for proper paired comparison. This was verified with runtime assertion.
 
 ---
 
 ## Results
 
-### Learning Curve Comparison
+### Branin Function
 
-![Acquisition Function Comparison](acquisition_comparison.png)
+![Acquisition Comparison](acquisition_comparison.png)
 
-**Figure 1:** Learning curves comparing EI, PI, and LCB variants across all datasets. Shaded regions show ±1 standard deviation over 20 runs.
+**Figure 1:** Learning curves with ±SE bands (x-axis starts at 5).
 
-### Performance Rankings
+#### Rankings (n=20 runs)
 
-| Dataset | Best | Second | Third | Fourth | Fifth |
-|---------|------|--------|-------|--------|-------|
-| **Branin** | LCB(κ=1): 0.985 | PI: 0.976 | EI: 0.962 | LCB(κ=2): 0.962 | LCB(κ=3): 0.951 |
-| **LDA** | PI: 0.913 | LCB(κ=1): 0.878 | EI: 0.817 | LCB(κ=3): 0.794 | LCB(κ=2): 0.789 |
-| **SVM** | LCB(κ=1): 0.846 | LCB(κ=2): 0.735 | LCB(κ=3): 0.687 | EI: 0.587 | PI: 0.528 |
+| Rank | Method | Mean Gap | ±SE |
+|------|--------|----------|-----|
+| 1 | LCB (κ=1) | 0.974 | ±0.011 |
+| 2 | PI (ξ=0.01) | 0.974 | ±0.011 |
+| 3 | EI (ξ=0.01) | 0.969 | ±0.013 |
+| 4 | LCB (κ=2) | 0.963 | ±0.013 |
+| 5 | Random | 0.736 | ±0.059 |
 
-### Statistical Significance
+**Paired t-tests (LCB κ=1 vs others):**
+- vs PI: p=0.55, d=+0.00 (n.s.) — **statistically indistinguishable**
+- vs EI: p=0.14, d=+0.09 (n.s.)
+- vs Random: p=0.0004, d=+1.26* — **large effect size**
 
-Paired t-tests comparing best acquisition function against others (α = 0.05):
+### LDA Dataset
 
-| Dataset | Best vs Second | Best vs Third | Best vs Fourth |
-|---------|----------------|---------------|----------------|
-| Branin | p=0.34 | p=0.11 | **p=0.006*** |
-| LDA | p=0.62 | p=0.17 | p=0.23 |
-| SVM | p=0.21 | p=0.13 | **p=0.029*** |
+| Rank | Method | Mean Gap | ±SE |
+|------|--------|----------|-----|
+| 1 | PI (ξ=0.01) | 0.948 | ±0.027 |
+| 2 | LCB (κ=1) | 0.937 | ±0.023 |
+| 3 | LCB (κ=2) | 0.891 | ±0.034 |
+| 4 | EI (ξ=0.01) | 0.876 | ±0.056 |
+| 5 | Random | 0.617 | ±0.085 |
 
-*Significant differences marked with asterisk*
+**Paired t-tests (PI vs others):**
+- vs LCB (κ=1): p=0.78, d=+0.09 (n.s.)
+- vs Random: p=0.001, d=+1.17*
+
+### SVM Dataset
+
+| Rank | Method | Mean Gap | ±SE |
+|------|--------|----------|-----|
+| 1 | LCB (κ=1) | 0.839 | ±0.055 |
+| 2 | Random | 0.652 | ±0.082 |
+| 3 | PI (ξ=0.01) | 0.628 | ±0.078 |
+| 4 | EI (ξ=0.01) | 0.593 | ±0.082 |
+| 5 | LCB (κ=2) | 0.559 | ±0.082 |
 
 ---
 
-## κ Sensitivity Analysis (LCB)
+## κ Sensitivity Analysis
 
 ![Kappa Sensitivity](kappa_sensitivity.png)
 
-**Figure 2:** Effect of κ on LCB performance (Branin function). Error bars show ±1 std over 20 runs.
-
-| κ | Mean Gap | Interpretation |
-|---|----------|----------------|
-| 0.5 | 0.941 | Too exploitative |
-| **1.0** | 0.985 | Near-optimal |
-| **1.5** | **0.984** | **Optimal** |
-| 2.0 | 0.962 | Slightly over-exploratory |
-| 3.0 | 0.951 | Too exploratory |
-
-**Finding:** The optimal κ ≈ 1-1.5 for Branin. Smaller κ (exploitation) works well when the GP model is accurate; larger κ is needed when uncertainty is high.
+**Figure 2:** LCB sensitivity to κ on Branin (all κ values share identical init points per run).
 
 ---
 
 ## Key Findings
 
-### 1. No Universal Winner
-Different acquisition functions excel on different problems:
-- **LCB (κ=1)** dominates on Branin and SVM
-- **PI** excels on LDA
-- **EI** performs consistently but rarely best
+1. **All BO methods significantly outperform Random Search** on Branin and LDA (d > 1.0)
+2. **Top acquisition functions are statistically indistinguishable** on Branin (LCB κ=1 ≈ PI ≈ EI)
+3. **LCB (κ=1) performs well across all datasets** — low exploration parameter works well here
+4. **SVM shows unexpected results** — LCB (κ=1) best, but EI/PI underperform Random
 
-### 2. LCB with Low κ is Surprisingly Effective
-Setting κ=1 (more exploitation) outperformed EI on 2 of 3 datasets. This suggests that when the GP model fits well, exploiting the current best predictions is more valuable than extensive exploration.
-
-### 3. PI Outperforms EI on LDA
-Probability of Improvement achieved 0.913 gap vs EI's 0.817. PI's simpler formulation (just probability of beating current best) may be advantageous when the objective landscape has many local optima.
-
-### 4. Acquisition Function Choice Depends on Problem Structure
-- **Smooth functions (Branin):** LCB and PI work well
-- **Rougher landscapes (LDA/SVM):** Performance varies significantly
-
----
-
-## Recommendations
-
-1. **Default choice:** LCB with κ=1-2 is a robust starting point
-2. **When exploration matters:** Use κ≥2 or EI
-3. **Simple problems:** PI can outperform EI
-4. **Tune κ if possible:** The optimal value is problem-dependent
-
-## Conclusion
-
-This investigation reveals that the commonly-used EI is not always the best choice. LCB with κ≈1 provides strong performance across datasets, while PI can excel on specific problems. **The choice of acquisition function should be treated as a hyperparameter itself**, potentially tuned using cross-validation on held-out evaluations or adapted during optimization.
+### Caveats
+- p > 0.05 means "no significant difference detected," NOT "equivalence"
+- Multiple comparisons not corrected (interpret p-values with caution)
+- These results depend on the specific kernel choice (RBF) and log transform

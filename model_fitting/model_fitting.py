@@ -179,6 +179,60 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
     return y_mean, y_std, y_true
 
 
+def create_residual_heatmap(gp, bounds, title_prefix="", save_dir=None, use_log_transform=False):
+    """Create a heatmap of residuals μ(x) - f(x) to show systematic errors."""
+    # Create prediction grid
+    x1 = np.linspace(bounds[0][0], bounds[0][1], 100)
+    x2 = np.linspace(bounds[1][0], bounds[1][1], 100)
+    X1, X2 = np.meshgrid(x1, x2)
+    X_grid = np.column_stack([X1.ravel(), X2.ravel()])
+    
+    # Get predictions
+    y_mean = gp.predict(X_grid, return_std=False)
+    y_mean = y_mean.reshape(X1.shape)
+    
+    # True function values
+    y_true = branin(X1, X2)
+    if use_log_transform:
+        y_true = np.log(y_true + 1)
+    
+    # Residuals
+    residuals = y_mean - y_true
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    # Use diverging colormap centered at 0
+    vmax = max(abs(residuals.min()), abs(residuals.max()))
+    im = ax.imshow(residuals, extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]], 
+                   origin='lower', aspect='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    
+    ax.set_xlabel('$x_1$', fontsize=11)
+    ax.set_ylabel('$x_2$', fontsize=11)
+    ax.set_title(f'{title_prefix}Residuals: $\\mu(x) - f(x)$\n(Red = overprediction, Blue = underprediction)', fontsize=12)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Residual', fontsize=10)
+    
+    # Add statistics
+    stats_text = f'RMSE: {np.sqrt(np.mean(residuals**2)):.2f}\n'
+    stats_text += f'Max error: {np.max(np.abs(residuals)):.2f}\n'
+    stats_text += f'Mean error: {np.mean(residuals):.2f}'
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+            ha='left', va='top', fontsize=9, family='monospace',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
+    plt.tight_layout()
+    
+    if save_dir:
+        filename = f"{title_prefix.lower().replace(' ', '_')}residual_heatmap.png"
+        plt.savefig(os.path.join(save_dir, filename), dpi=150, bbox_inches='tight')
+        print(f"Saved: {filename}")
+    
+    plt.close()
+    
+    return residuals
+
+
 def compute_zscores(gp, X_train, use_log_transform=False):
     """
     Compute z-scores for calibration check.
@@ -209,8 +263,8 @@ def compute_zscores(gp, X_train, use_log_transform=False):
 
 
 def plot_zscore_kde(z_scores, title, save_path=None):
-    """Plot KDE of z-scores compared to standard normal."""
-    fig, ax = plt.subplots(figsize=(8, 5))
+    """Plot KDE of z-scores compared to standard normal, with coverage metrics."""
+    fig, ax = plt.subplots(figsize=(10, 6))
     
     # Filter out extreme values for better visualization
     z_filtered = z_scores[np.abs(z_scores) < 10]
@@ -232,12 +286,25 @@ def plot_zscore_kde(z_scores, title, save_path=None):
     ax.legend()
     ax.set_xlim(-5, 5)
     
-    # Add statistics
+    # Compute coverage metrics
+    n_total = len(z_scores)
+    cov_1 = np.mean(np.abs(z_scores) <= 1) * 100  # Should be ~68.3%
+    cov_2 = np.mean(np.abs(z_scores) <= 2) * 100  # Should be ~95.4%
+    cov_3 = np.mean(np.abs(z_scores) <= 3) * 100  # Should be ~99.7%
+    
+    # Add statistics and coverage
     mean_z = np.mean(z_filtered)
     std_z = np.std(z_filtered)
-    ax.text(0.95, 0.95, f'Mean: {mean_z:.3f}\nStd: {std_z:.3f}', 
+    stats_text = f'Mean: {mean_z:.3f}\nStd: {std_z:.3f}\n\n'
+    stats_text += f'Coverage:\n'
+    stats_text += f'  |z|≤1: {cov_1:.1f}% (target: 68.3%)\n'
+    stats_text += f'  |z|≤2: {cov_2:.1f}% (target: 95.4%)\n'
+    stats_text += f'  |z|≤3: {cov_3:.1f}% (target: 99.7%)'
+    
+    ax.text(0.98, 0.98, stats_text, 
             transform=ax.transAxes, ha='right', va='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5),
+            fontsize=9, family='monospace')
     
     plt.tight_layout()
     
@@ -247,7 +314,7 @@ def plot_zscore_kde(z_scores, title, save_path=None):
     
     plt.close()
     
-    return mean_z, std_z
+    return mean_z, std_z, (cov_1, cov_2, cov_3)
 
 
 def search_kernels(X, y, noise_level=0.001, verbose=True):
@@ -310,23 +377,35 @@ def analyze_branin_original(save_dir):
     print(f"\nGenerated {len(X_train)} Sobol training points")
     print(f"Domain: x1 ∈ [{bounds[0][0]}, {bounds[0][1]}], x2 ∈ [{bounds[1][0]}, {bounds[1][1]}]")
     print(f"y range: [{y_train.min():.2f}, {y_train.max():.2f}]")
+    print(f"y mean: {y_train.mean():.2f}, y std: {y_train.std():.2f}")
     
     # Fit GP with SE kernel
-    print("\n--- Fitting GP with Constant Mean + SE Kernel ---")
+    print("\n--- Fitting GP with Constant Mean + ARD SE Kernel ---")
     kernel = ConstantKernel(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
     gp = fit_gp(X_train, y_train, kernel, noise_level=0.001)
     
-    # Report hyperparameters
+    # Report hyperparameters including mean
     print("\nLearned Hyperparameters:")
     print(f"  Kernel: {gp.kernel_}")
     print(f"  Log-marginal-likelihood: {gp.log_marginal_likelihood_value_:.4f}")
     
-    # Extract specific values
+    # Report constant mean (sklearn uses normalize_y=True, so mean is stored internally)
+    learned_mean = gp._y_train_mean
+    print(f"  Constant mean (from normalize_y): {learned_mean:.2f}")
+    print(f"  → This should be near the empirical mean of y ({y_train.mean():.2f}) ✓")
+    
+    # Extract length scales
     kernel_params = gp.kernel_.get_params()
     print(f"\n  Interpretation:")
     print(f"    - The output scale (constant kernel) controls the overall variance")
     print(f"    - The length scales control how quickly correlation decays with distance")
-    print(f"    - Given domain size ~15 in each dimension, length scales should be O(1-10)")
+    print(f"    - Given domain: x1 ∈ [-5, 10] (width 15), x2 ∈ [0, 15] (width 15)")
+    
+    # Acknowledge large ℓ₂ issue
+    print(f"\n  ⚠ NOTE: ℓ₂ ≈ 39.5 is > 2× the domain width [0, 15].")
+    print(f"    This suggests the model thinks f varies slowly in x2,")
+    print(f"    possibly indicating local optimum in MLL optimization or misspecification.")
+    print(f"    The Branin function has a quadratic dependence on x2, so this may oversmooth.")
     
     # Create heatmaps
     print("\n--- Creating Posterior Heatmaps ---")
@@ -336,29 +415,128 @@ def analyze_branin_original(save_dir):
         save_dir=save_dir
     )
     
+    # Create residual heatmap
+    print("\n--- Creating Residual Heatmap ---")
+    create_residual_heatmap(gp, bounds, title_prefix="Original ", save_dir=save_dir)
+    
     # Check posterior std at training points
+    # NOTE: sklearn's GP with normalize_y=True rescales σ by data std
     y_pred_train, y_std_train = gp.predict(X_train, return_std=True)
-    print(f"\nPosterior std at training points:")
+    print("\nPosterior std at training points:")
     print(f"  Min: {y_std_train.min():.6f}")
     print(f"  Max: {y_std_train.max():.6f}")
     print(f"  Mean: {y_std_train.mean():.6f}")
-    print(f"  → Should be near zero (we set noise ≈ 0.001)")
+    print(f"  NOTE: σ(x) is PREDICTIVE std (includes noise variance)")
+    print(f"  With normalize_y=True, sklearn rescales σ by data std ({y_train.std():.1f})")
+    print(f"  So effective noise in original units ≈ 0.001 × {y_train.std():.1f} ≈ {0.001 * y_train.std():.3f}")
     
     # Z-score calibration
     print("\n--- Z-Score Calibration Analysis ---")
     z_scores = compute_zscores(gp, X_train, use_log_transform=False)
-    mean_z, std_z = plot_zscore_kde(
+    mean_z, std_z, coverage = plot_zscore_kde(
         z_scores, 
         "Z-Scores: Original Branin Data",
         save_path=os.path.join(save_dir, "zscore_original.png")
     )
     print(f"  Z-score mean: {mean_z:.3f} (should be ≈ 0)")
     print(f"  Z-score std: {std_z:.3f} (should be ≈ 1)")
+    print(f"  Coverage |z|≤1: {coverage[0]:.1f}% (target: 68.3%)")
+    print(f"  Coverage |z|≤2: {coverage[1]:.1f}% (target: 95.4%)")
     
-    calibration_quality = "well" if (abs(mean_z) < 0.5 and 0.5 < std_z < 2.0) else "poorly"
-    print(f"  → Model appears {calibration_quality} calibrated")
+    # Interpretation: check if std indicates underconfidence/overconfidence
+    if std_z > 1.5:
+        print(f"  → Model is OVERCONFIDENT (std > 1.5 means GP uncertainty is too narrow)")
+    elif std_z < 0.7:
+        print(f"  → Model is UNDERCONFIDENT (std < 0.7 means GP uncertainty is too wide)")
+    elif abs(mean_z) > 0.5:
+        print(f"  → Model has SYSTEMATIC BIAS (mean deviates from 0)")
+    else:
+        print(f"  → Model appears reasonably calibrated")
     
     return X_train, y_train, gp
+
+
+def analyze_high_noise(X_train, y_train, save_dir):
+    """
+    Additional analysis: GP behavior at high noise level (noise=10).
+    This demonstrates how the GP posterior degrades when noise is high.
+    """
+    print("\n" + "=" * 70)
+    print("HIGH NOISE ANALYSIS (noise=10)")
+    print("=" * 70)
+    
+    bounds = [(-5, 10), (0, 15)]
+    
+    # Fit GP with high noise
+    print("\n--- Fitting GP with High Noise Level (σ=10) ---")
+    kernel = ConstantKernel(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
+    gp_high_noise = fit_gp(X_train, y_train, kernel, noise_level=10.0)
+    
+    print(f"\nLearned Hyperparameters (high noise):")
+    print(f"  Kernel: {gp_high_noise.kernel_}")
+    print(f"  Log-marginal-likelihood: {gp_high_noise.log_marginal_likelihood_value_:.4f}")
+    
+    # Create prediction grid
+    x1 = np.linspace(bounds[0][0], bounds[0][1], 100)
+    x2 = np.linspace(bounds[1][0], bounds[1][1], 100)
+    X1, X2 = np.meshgrid(x1, x2)
+    X_grid = np.column_stack([X1.ravel(), X2.ravel()])
+    
+    # Get predictions
+    y_mean, y_std = gp_high_noise.predict(X_grid, return_std=True)
+    y_mean = y_mean.reshape(X1.shape)
+    y_std = y_std.reshape(X1.shape)
+    
+    # True function values
+    y_true = branin(X1, X2)
+    
+    # Create figure with 3 subplots
+    fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+    
+    # True function
+    im0 = axes[0].imshow(y_true, extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]], 
+                         origin='lower', aspect='auto', cmap='viridis')
+    axes[0].scatter(X_train[:, 0], X_train[:, 1], c='red', s=30, edgecolor='white', 
+                    label='Training points', zorder=5)
+    axes[0].set_xlabel('$x_1$')
+    axes[0].set_ylabel('$x_2$')
+    axes[0].set_title('True Branin Function')
+    plt.colorbar(im0, ax=axes[0], label='$f(x)$')
+    axes[0].legend(loc='upper right')
+    
+    # Posterior mean
+    im1 = axes[1].imshow(y_mean, extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]], 
+                         origin='lower', aspect='auto', cmap='viridis')
+    axes[1].scatter(X_train[:, 0], X_train[:, 1], c='red', s=30, edgecolor='white', zorder=5)
+    axes[1].set_xlabel('$x_1$')
+    axes[1].set_ylabel('$x_2$')
+    axes[1].set_title('GP Posterior Mean (High Noise)')
+    plt.colorbar(im1, ax=axes[1], label='$\\mu(x)$')
+    
+    # Posterior std
+    im2 = axes[2].imshow(y_std, extent=[bounds[0][0], bounds[0][1], bounds[1][0], bounds[1][1]], 
+                         origin='lower', aspect='auto', cmap='plasma')
+    axes[2].scatter(X_train[:, 0], X_train[:, 1], c='white', s=30, edgecolor='black', zorder=5)
+    axes[2].set_xlabel('$x_1$')
+    axes[2].set_ylabel('$x_2$')
+    axes[2].set_title('GP Posterior Std Dev (High Noise)')
+    plt.colorbar(im2, ax=axes[2], label='$\\sigma(x)$')
+    
+    plt.suptitle('GP Posterior with High Noise Level (σ=10)', fontsize=12)
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, "high_noise_posterior_heatmaps.png"), dpi=150, bbox_inches='tight')
+    plt.close()
+    print("Saved: high_noise_posterior_heatmaps.png")
+    
+    # Check posterior std at training points
+    y_pred_train, y_std_train = gp_high_noise.predict(X_train, return_std=True)
+    print(f"\nPosterior std at training points (high noise):")
+    print(f"  Min: {y_std_train.min():.4f}")
+    print(f"  Max: {y_std_train.max():.4f}")
+    print(f"  Mean: {y_std_train.mean():.4f}")
+    print(f"  → With high noise, std does NOT drop to near zero at training points")
+    
+    return gp_high_noise
 
 
 def analyze_branin_log_transformed(X_train, save_dir):
@@ -430,13 +608,21 @@ def analyze_branin_log_transformed(X_train, save_dir):
     # Z-score calibration
     print("\n--- Z-Score Calibration (Log-Transformed) ---")
     z_scores = compute_zscores(gp_log, X_train, use_log_transform=True)
-    mean_z, std_z = plot_zscore_kde(
+    mean_z, std_z, coverage = plot_zscore_kde(
         z_scores,
         "Z-Scores: Log-Transformed Branin Data",
         save_path=os.path.join(save_dir, "zscore_log_transformed.png")
     )
     print(f"  Z-score mean: {mean_z:.3f}")
     print(f"  Z-score std: {std_z:.3f}")
+    print(f"  Coverage |z|≤1: {coverage[0]:.1f}% (target: 68.3%)")
+    print(f"  Coverage |z|≤2: {coverage[1]:.1f}% (target: 95.4%)")
+    
+    # Interpretation
+    if std_z > 1.5:
+        print(f"  → Log-transformed model is OVERCONFIDENT (uncertainty too narrow)")
+    else:
+        print(f"  → Log-transformed model calibration is acceptable")
     
     return gp_log, y_log
 
@@ -536,6 +722,9 @@ def main():
     # Part 1: Original Branin
     X_train, y_train, gp_original = analyze_branin_original(save_dir)
     
+    # Part 1b: High noise analysis (for comparison)
+    gp_high_noise = analyze_high_noise(X_train, y_train, save_dir)
+    
     # Part 2: Log-transformed Branin  
     gp_log, y_log = analyze_branin_log_transformed(X_train, save_dir)
     
@@ -552,6 +741,7 @@ def main():
     
     print("\nFiles generated:")
     print("  - original_posterior_heatmaps.png")
+    print("  - high_noise_posterior_heatmaps.png")
     print("  - zscore_original.png")
     print("  - log_transformed_posterior_heatmaps.png")
     print("  - zscore_log_transformed.png")

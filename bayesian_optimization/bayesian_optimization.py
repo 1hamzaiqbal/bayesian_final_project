@@ -110,7 +110,8 @@ def compute_gap(f_best_found, f_best_initial, f_optimum):
 
 
 def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30, 
-                          use_log_transform=False, verbose=False):
+                          use_log_transform=False, init_indices=None, 
+                          kernel=None, verbose=False):
     """
     Run Bayesian optimization experiment.
     
@@ -126,6 +127,10 @@ def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30,
         Number of BO iterations
     use_log_transform : bool
         Whether to log-transform the objective
+    init_indices : array, optional
+        Pre-specified initial indices for reproducibility (for paired comparison)
+    kernel : sklearn kernel, optional
+        GP kernel to use (default: RBF)
     verbose : bool
         Print progress
         
@@ -142,9 +147,10 @@ def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30,
     y_values = []
     best_so_far = []
     
-    # Random initialization
-    rng = np.random.default_rng()
-    init_indices = rng.choice(n_pool, size=n_initial, replace=False)
+    # Use provided init_indices OR generate random ones
+    if init_indices is None:
+        rng = np.random.default_rng()
+        init_indices = rng.choice(n_pool, size=n_initial, replace=False)
     
     for idx in init_indices:
         selected_indices.append(idx)
@@ -163,8 +169,8 @@ def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30,
         else:
             y_train_transformed = y_train
         
-        # Fit GP
-        gp = fit_gp(X_train, y_train_transformed)
+        # Fit GP with specified kernel
+        gp = fit_gp(X_train, y_train_transformed, kernel=kernel)
         
         # Predict on available points
         available_indices = np.where(available)[0]
@@ -196,12 +202,23 @@ def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30,
     return {
         'indices': selected_indices,
         'y_values': y_values,
-        'best_so_far': best_so_far
+        'best_so_far': best_so_far,
+        'init_indices': init_indices  # Return for verification
     }
 
 
-def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, verbose=False):
-    """Run random search experiment."""
+def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, 
+                  init_indices=None, rng=None, verbose=False):
+    """
+    Run random search experiment.
+    
+    Parameters:
+    -----------
+    init_indices : array, optional
+        Pre-specified initial indices for reproducibility (for paired comparison)
+    rng : numpy Generator, optional
+        Random number generator for reproducibility
+    """
     n_pool = len(X_pool)
     available = np.ones(n_pool, dtype=bool)
     
@@ -209,8 +226,12 @@ def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, verbose=False):
     y_values = []
     best_so_far = []
     
-    rng = np.random.default_rng()
-    init_indices = rng.choice(n_pool, size=n_initial, replace=False)
+    # Use provided init_indices OR generate random ones
+    if rng is None:
+        rng = np.random.default_rng()
+    
+    if init_indices is None:
+        init_indices = rng.choice(n_pool, size=n_initial, replace=False)
     
     for idx in init_indices:
         selected_indices.append(idx)
@@ -233,7 +254,8 @@ def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, verbose=False):
     return {
         'indices': selected_indices,
         'y_values': y_values,
-        'best_so_far': best_so_far
+        'best_so_far': best_so_far,
+        'init_indices': init_indices  # Return for verification
     }
 
 
@@ -331,6 +353,9 @@ def create_ei_heatmaps(save_dir):
 def run_experiments(n_runs=20, save_dir=None):
     """
     Run 20 BO experiments on all datasets with random search baseline.
+    
+    FIXED: BO and RS now share identical initial points per run for proper pairing.
+    FIXED: LDA/SVM use Matern 3/2 kernel as stated in report.
     """
     print("\n" + "=" * 70)
     print("RUNNING BO AND RANDOM SEARCH EXPERIMENTS")
@@ -348,37 +373,59 @@ def run_experiments(n_runs=20, save_dir=None):
     y_branin = branin(X_branin[:, 0], X_branin[:, 1])
     f_opt_branin = 0.397887  # Known optimum
     
+    # Branin uses SE kernel, LDA/SVM use Matern 3/2 (as per model fitting results)
+    kernel_branin = ConstantKernel(1.0) * RBF(length_scale=[1.0, 1.0])
+    kernel_matern = ConstantKernel(1.0) * Matern(length_scale=[1.0, 1.0, 1.0], nu=1.5)
+    
     datasets = {
-        'Branin': (X_branin, y_branin, f_opt_branin, True),  # (X, y, f_opt, use_log)
-        'LDA': (lda_data[:, :3], lda_data[:, 3], lda_data[:, 3].min(), True),
-        'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True)
+        'Branin': (X_branin, y_branin, f_opt_branin, True, kernel_branin),  # (X, y, f_opt, use_log, kernel)
+        'LDA': (lda_data[:, :3], lda_data[:, 3], lda_data[:, 3].min(), True, kernel_matern),
+        'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True, kernel_matern)
     }
     
     results = {}
     
-    for name, (X_pool, y_pool, f_opt, use_log) in datasets.items():
+    for name, (X_pool, y_pool, f_opt, use_log, kernel) in datasets.items():
         print(f"\n{'='*50}")
         print(f"  {name} DATASET")
         print(f"{'='*50}")
         print(f"Pool size: {len(X_pool)}, Optimum: {f_opt:.6f}")
+        print(f"Kernel: {'RBF' if name == 'Branin' else 'Matern 3/2'}")
         
         bo_results = []
         rs_results = []
         
         for run in range(n_runs):
-            np.random.seed(run * 42)  # Different seed for each run
+            # Create seeded RNG for this run - used for BOTH BO and RS
+            run_rng = np.random.default_rng(seed=run * 42 + 1)
+            
+            # Generate SHARED initial indices for proper pairing
+            n_pool = len(X_pool)
+            init_indices = run_rng.choice(n_pool, size=5, replace=False)
+            
+            # Create separate RNG for RS post-init (BO uses its own EI-based selection)
+            rs_rng = np.random.default_rng(seed=run * 42 + 2)
             
             # Bayesian optimization (5 initial + 30 iterations = 35 total)
             bo_history = bayesian_optimization(
                 X_pool, y_pool, n_initial=5, n_iterations=30, 
-                use_log_transform=use_log, verbose=False
+                use_log_transform=use_log, 
+                init_indices=init_indices.copy(),  # Pass shared init
+                kernel=kernel,
+                verbose=False
             )
             
             # Random search (5 initial + 145 more = 150 total)
-            np.random.seed(run * 42)  # Same initialization
             rs_history = random_search(
-                X_pool, y_pool, n_initial=5, n_iterations=145, verbose=False
+                X_pool, y_pool, n_initial=5, n_iterations=145, 
+                init_indices=init_indices.copy(),  # Same shared init
+                rng=rs_rng,
+                verbose=False
             )
+            
+            # Verify pairing
+            assert np.array_equal(bo_history['init_indices'], rs_history['init_indices']), \
+                f"Run {run}: Init indices don't match!"
             
             bo_results.append(bo_history)
             rs_results.append(rs_history)
@@ -392,6 +439,7 @@ def run_experiments(n_runs=20, save_dir=None):
             'f_opt': f_opt
         }
     
+    print("\n✓ All runs verified: BO and RS share identical initial points per run")
     return results
 
 
@@ -425,21 +473,24 @@ def plot_learning_curves(results, save_dir):
             for i in range(min(n_obs_rs, len(run['best_so_far']))):
                 rs_gaps[run_idx, i] = compute_gap(run['best_so_far'][i], f_best_initial, f_opt)
         
-        # Plot
+        # Use Standard Error bands (not std, to show uncertainty in mean)
         x_bo = np.arange(1, n_obs_bo + 1)
         x_rs = np.arange(1, n_obs_rs + 1)
+        n_runs = bo_gaps.shape[0]
+        bo_se = bo_gaps.std(axis=0) / np.sqrt(n_runs)
+        rs_se = rs_gaps.std(axis=0) / np.sqrt(n_runs)
         
         ax.plot(x_bo, bo_gaps.mean(axis=0), 'b-', linewidth=2, label='BO (EI)')
         ax.fill_between(x_bo, 
-                        bo_gaps.mean(axis=0) - bo_gaps.std(axis=0),
-                        bo_gaps.mean(axis=0) + bo_gaps.std(axis=0),
-                        alpha=0.2, color='b')
+                        np.clip(bo_gaps.mean(axis=0) - bo_se, 0, 1),
+                        np.clip(bo_gaps.mean(axis=0) + bo_se, 0, 1),
+                        alpha=0.3, color='b')
         
         ax.plot(x_rs, rs_gaps.mean(axis=0), 'r--', linewidth=2, label='Random Search')
         ax.fill_between(x_rs,
-                        rs_gaps.mean(axis=0) - rs_gaps.std(axis=0),
-                        rs_gaps.mean(axis=0) + rs_gaps.std(axis=0),
-                        alpha=0.2, color='r')
+                        np.clip(rs_gaps.mean(axis=0) - rs_se, 0, 1),
+                        np.clip(rs_gaps.mean(axis=0) + rs_se, 0, 1),
+                        alpha=0.3, color='r')
         
         ax.set_xlabel('Number of Observations')
         ax.set_ylabel('Gap (higher is better)')
@@ -447,6 +498,7 @@ def plot_learning_curves(results, save_dir):
         ax.legend()
         ax.set_xlim([1, 35])
         ax.set_ylim([0, 1.05])
+        ax.grid(True, alpha=0.3)
         ax.grid(True, alpha=0.3)
     
     plt.suptitle('Learning Curves: BO vs Random Search', fontsize=13)
@@ -493,32 +545,34 @@ def compute_statistics(results, save_dir):
                     gaps.append(gap)
             rs_gaps_at[n_obs] = np.array(gaps)
         
-        # Print results
+        # Print results - FIXED: BO has 35 total evals, not 30
         print(f"\nMean Gap (±std):")
-        print(f"  BO (30 obs):          {bo_final_gaps.mean():.4f} ± {bo_final_gaps.std():.4f}")
+        print(f"  BO (35 total evals):  {bo_final_gaps.mean():.4f} ± {bo_final_gaps.std():.4f}")
         
         for n_obs in [30, 60, 90, 120, 150]:
             gaps = rs_gaps_at[n_obs]
-            print(f"  RS ({n_obs:3d} obs):        {gaps.mean():.4f} ± {gaps.std():.4f}")
+            print(f"  RS ({n_obs:3d} total evals): {gaps.mean():.4f} ± {gaps.std():.4f}")
         
-        # Paired t-test: BO(30) vs RS(30)
-        print(f"\nPaired t-tests (BO@30 vs RS@N):")
+        # Paired t-test: BO@35 vs RS@N
+        print(f"\nPaired t-tests (BO@35 vs RS@N):")
+        print(f"  (Note: p > 0.05 means 'no significant difference', not 'equivalence')")
         
         speedup = None
         for n_obs in [30, 60, 90, 120, 150]:
             if len(rs_gaps_at[n_obs]) == len(bo_final_gaps):
                 t_stat, p_value = stats.ttest_rel(bo_final_gaps, rs_gaps_at[n_obs])
-                print(f"  RS@{n_obs:3d}: t={t_stat:7.3f}, p={p_value:.4f}", end="")
+                mean_diff = bo_final_gaps.mean() - rs_gaps_at[n_obs].mean()
+                print(f"  RS@{n_obs:3d}: t={t_stat:7.3f}, p={p_value:.4f}, ΔGap={mean_diff:+.3f}", end="")
                 if p_value < 0.05:
                     print(" *")
                 else:
-                    print("")
+                    print(" (n.s.)")
                     if speedup is None:
                         speedup = n_obs
         
         if speedup:
-            print(f"\n  Speedup: BO needs ~30 obs to match RS at ~{speedup} obs")
-            print(f"  → BO is ~{speedup/30:.1f}x faster than random search")
+            print(f"\n  At RS@{speedup}, the BO-RS difference is no longer statistically significant (p>0.05).")
+            print(f"  However, this does NOT prove equivalence—only inconclusive difference.")
         
         stats_results[name] = {
             'bo_mean': bo_final_gaps.mean(),

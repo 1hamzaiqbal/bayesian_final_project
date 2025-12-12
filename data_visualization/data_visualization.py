@@ -74,9 +74,9 @@ def create_branin_heatmap(save_path=None):
     
     # Mark the three global minima
     minima = [(-np.pi, 12.275), (np.pi, 2.275), (9.42478, 2.475)]
-    for x, y in minima:
+    for i, (x, y) in enumerate(minima):
         ax.plot(x, y, 'r*', markersize=15, markeredgecolor='white', 
-                markeredgewidth=1.5, label='Global minimum' if x == -np.pi else '')
+                markeredgewidth=1.5, label='Global minima' if i == 0 else '')
     
     ax.set_xlabel('$x_1$', fontsize=12)
     ax.set_ylabel('$x_2$', fontsize=12)
@@ -114,36 +114,142 @@ def analyze_stationarity():
     print("=" * 70)
     
     analysis = """
-The Branin function is NON-STATIONARY. This is evident from several observations:
+FUNCTION BEHAVIOR ANALYSIS:
 
-1. VARYING MAGNITUDE: The function values range from approximately 0.4 (at the 
-   three global minima) to over 300 at the domain corners. This dramatic range
-   indicates non-constant behavior.
+Note on terminology: In GP theory, "stationarity" refers to a kernel property 
+(covariance depends only on displacement x-x'), not an intrinsic function property.
+A deterministic function doesn't have stationarity as such—what we're really 
+asking is: WILL A STATIONARY GP WITH A SINGLE GLOBAL LENGTHSCALE FIT WELL?
 
-2. ASYMMETRIC STRUCTURE: The function has three distinct global minima located at:
+ANSWER: A stationary GP with a single lengthscale WILL STRUGGLE because the 
+function exhibits regions of very different curvature and amplitude across the domain.
+
+EVIDENCE FOR MODEL MISMATCH:
+
+1. NON-CONSTANT AMPLITUDE: Function values range from ~0.4 (at minima) to over 300
+   at corners. A stationary GP with one output scale cannot capture this variation.
+
+2. VARYING CURVATURE: The function has sharp curvature near minima but flatter 
+   behavior in high-value regions. A single lengthscale cannot capture both.
+   
+3. ASYMMETRIC STRUCTURE: The three global minima are located at:
    - (-π, 12.275)
    - (π, 2.275)  
    - (9.42478, 2.475)
-   These create valleys of varying depths and widths across the domain.
+   Creating valleys of varying depths and widths across the domain.
 
-3. QUADRATIC COMPONENT: The term a(x2 - bx1² + cx1 - r)² creates a parabolic 
-   valley structure that changes curvature across the domain.
+4. ANISOTROPIC BEHAVIOR: The cosine term s(1-t)cos(x1) adds oscillation only in 
+   the x1 direction, with period ~2π ≈ 6.3. This suggests x1 needs a shorter 
+   lengthscale than x2 (anisotropic/ARD kernel).
 
-4. PERIODIC MODULATION: The cosine term s(1-t)cos(x1) adds periodic oscillation
-   in the x1 direction only, creating wave-like patterns that interact with 
-   the quadratic structure.
-
-5. EDGE EFFECTS: Function values are much higher near the domain boundaries,
-   especially at the corners, compared to the interior regions near the minima.
+5. EDGE EFFECTS: Function values increase dramatically near domain boundaries,
+   especially at corners (high-amplitude region vs. interior).
 
 IMPLICATIONS FOR BAYESIAN OPTIMIZATION:
-- A stationary GP prior (constant mean, stationary kernel) may struggle to 
-  capture the varying behavior across the domain.
-- The optimizer may need more samples in high-variance regions.
-- Adaptive lengthscale or non-stationary kernels may improve performance.
+- Use ARD (Automatic Relevance Determination) kernels with per-dimension lengthscales
+- Consider transformations (e.g., log) to compress amplitude variation
+- A stationary SE/Matérn kernel may require many training points in high-curvature regions
+- Non-stationary kernels (e.g., neural network kernels) could help but add complexity
 """
     print(analysis)
     return analysis
+
+
+def create_gradient_magnitude_heatmap(save_path=None):
+    """
+    Create a heatmap of the gradient magnitude |∇f(x)| to quantitatively 
+    demonstrate varying curvature across the domain.
+    
+    This provides quantitative support for the claim that a stationary GP
+    with a single lengthscale will struggle with this function.
+    """
+    print("\n" + "=" * 70)
+    print("QUANTITATIVE STATIONARITY ANALYSIS: Gradient Magnitude")
+    print("=" * 70)
+    
+    # Create grid (use smaller grid for gradient computation)
+    x1 = np.linspace(-5, 10, 500)
+    x2 = np.linspace(0, 15, 500)
+    X1, X2 = np.meshgrid(x1, x2)
+    Z = branin(X1, X2)
+    Z_log = np.log(Z + 1)
+    
+    # Compute gradient magnitude using finite differences
+    dx1 = x1[1] - x1[0]
+    dx2 = x2[1] - x2[0]
+    
+    # Original function gradient
+    grad_x1_orig = np.gradient(Z, dx1, axis=1)
+    grad_x2_orig = np.gradient(Z, dx2, axis=0)
+    grad_mag_orig = np.sqrt(grad_x1_orig**2 + grad_x2_orig**2)
+    
+    # Log-transformed function gradient
+    grad_x1_log = np.gradient(Z_log, dx1, axis=1)
+    grad_x2_log = np.gradient(Z_log, dx2, axis=0)
+    grad_mag_log = np.sqrt(grad_x1_log**2 + grad_x2_log**2)
+    
+    # Create comparison plot
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Original gradient magnitude
+    im1 = axes[0].imshow(grad_mag_orig, extent=[-5, 10, 0, 15], origin='lower', 
+                         aspect='auto', cmap='hot')
+    axes[0].set_xlabel('$x_1$', fontsize=11)
+    axes[0].set_ylabel('$x_2$', fontsize=11)
+    axes[0].set_title('Gradient Magnitude $|\\nabla f|$ (Original)', fontsize=12)
+    cbar1 = plt.colorbar(im1, ax=axes[0])
+    cbar1.set_label('$|\\nabla f|$', fontsize=10)
+    
+    # Log-transformed gradient magnitude
+    im2 = axes[1].imshow(grad_mag_log, extent=[-5, 10, 0, 15], origin='lower', 
+                         aspect='auto', cmap='hot')
+    axes[1].set_xlabel('$x_1$', fontsize=11)
+    axes[1].set_ylabel('$x_2$', fontsize=11)
+    axes[1].set_title('Gradient Magnitude $|\\nabla \\log(f+1)|$ (Transformed)', fontsize=12)
+    cbar2 = plt.colorbar(im2, ax=axes[1])
+    cbar2.set_label('$|\\nabla \\log(f+1)|$', fontsize=10)
+    
+    plt.suptitle('Spatial Variation in Local Curvature (Evidence for Model Mismatch)', fontsize=13, y=1.02)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Saved: {save_path}")
+    
+    plt.close()
+    
+    # Calculate statistics
+    orig_range_ratio = grad_mag_orig.max() / (grad_mag_orig.min() + 1e-10)
+    log_range_ratio = grad_mag_log.max() / (grad_mag_log.min() + 1e-10)
+    
+    explanation = """
+GRADIENT MAGNITUDE ANALYSIS:
+
+The gradient magnitude |∇f(x)| measures local rate of change, which relates to
+the appropriate lengthscale for a GP at each location.
+
+ORIGINAL FUNCTION:
+  - Gradient magnitude range: [{:.2f}, {:.2f}]
+  - Range ratio: {:.0f}×
+  - Interpretation: Extreme variation in local curvature. Near minima,
+    gradients are low; near domain edges, gradients are very high.
+    This means a single lengthscale cannot work everywhere.
+
+LOG-TRANSFORMED FUNCTION:
+  - Gradient magnitude range: [{:.4f}, {:.2f}]
+  - Range ratio: {:.0f}×
+  - Interpretation: The log transform compresses the gradient variation,
+    making the function more amenable to a stationary GP.
+
+CONCLUSION: The gradient heatmaps visually demonstrate that:
+1. The original Branin has highly varying local curvature (bad for stationary GP)
+2. Log transformation reduces this variation (improves stationary GP fit)
+""".format(grad_mag_orig.min(), grad_mag_orig.max(), orig_range_ratio,
+           grad_mag_log.min(), grad_mag_log.max(), log_range_ratio)
+    
+    print(explanation)
+    
+    return grad_mag_orig, grad_mag_log
 
 
 def create_transformed_heatmap(save_path=None):
@@ -249,6 +355,8 @@ def create_kde_plots(save_path=None):
     """
     Bullet point 4: Make a kernel density estimate of the distribution of 
     the values for the lda and svm benchmarks. Interpret the distributions.
+    
+    Note: We also show histograms alongside KDEs to provide context.
     """
     print("\n" + "=" * 70)
     print("BULLET POINT 4: Kernel Density Estimates")
@@ -256,33 +364,55 @@ def create_kde_plots(save_path=None):
     
     lda_values, svm_values = load_benchmark_data()
     
-    # Create KDE plots
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+    # Create KDE + histogram plots (2 rows x 2 cols)
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+    
+    # LDA Histogram
+    axes[0, 0].hist(lda_values, bins=30, density=True, alpha=0.7, color='steelblue', edgecolor='white')
+    axes[0, 0].axvline(lda_values.min(), color='red', linestyle='--', 
+                       label=f'Min: {lda_values.min():.2f}', linewidth=1.5)
+    axes[0, 0].set_xlabel('Performance Value (to minimize)', fontsize=10)
+    axes[0, 0].set_ylabel('Density', fontsize=10)
+    axes[0, 0].set_title('LDA Benchmark: Histogram', fontsize=11)
+    axes[0, 0].legend()
     
     # LDA KDE
     x_lda = np.linspace(lda_values.min() * 0.9, lda_values.max() * 1.1, 1000)
-    kde_lda = stats.gaussian_kde(lda_values)
-    axes[0].fill_between(x_lda, kde_lda(x_lda), alpha=0.5, color='steelblue')
-    axes[0].plot(x_lda, kde_lda(x_lda), color='steelblue', linewidth=2)
-    axes[0].axvline(lda_values.min(), color='red', linestyle='--', 
-                    label=f'Min: {lda_values.min():.2f}', linewidth=1.5)
-    axes[0].set_xlabel('Performance Value (to minimize)', fontsize=11)
-    axes[0].set_ylabel('Density', fontsize=11)
-    axes[0].set_title('LDA Benchmark: Kernel Density Estimate', fontsize=12)
-    axes[0].legend()
+    kde_lda = stats.gaussian_kde(lda_values)  # Uses Scott's rule by default
+    axes[0, 1].fill_between(x_lda, kde_lda(x_lda), alpha=0.5, color='steelblue')
+    axes[0, 1].plot(x_lda, kde_lda(x_lda), color='steelblue', linewidth=2)
+    axes[0, 1].axvline(lda_values.min(), color='red', linestyle='--', 
+                       label=f'Min: {lda_values.min():.2f}', linewidth=1.5)
+    axes[0, 1].set_xlabel('Performance Value (to minimize)', fontsize=10)
+    axes[0, 1].set_ylabel('Density', fontsize=10)
+    axes[0, 1].set_title('LDA Benchmark: KDE (Scott\'s rule bandwidth)', fontsize=11)
+    axes[0, 1].legend()
     
-    # SVM KDE
+    # SVM Histogram
+    axes[1, 0].hist(svm_values, bins=30, density=True, alpha=0.7, color='darkorange', edgecolor='white')
+    axes[1, 0].axvline(svm_values.min(), color='red', linestyle='--', 
+                       label=f'Min: {svm_values.min():.4f}', linewidth=1.5)
+    # Mark the true bounds for SVM (bounded metric)
+    axes[1, 0].axvline(0.0, color='gray', linestyle=':', alpha=0.5, label='True lower bound (0)')
+    axes[1, 0].axvline(0.5, color='gray', linestyle=':', alpha=0.5, label='Upper bound (0.5 = random)')
+    axes[1, 0].set_xlabel('Performance Value (error rate)', fontsize=10)
+    axes[1, 0].set_ylabel('Density', fontsize=10)
+    axes[1, 0].set_title('SVM Benchmark: Histogram (bounded [0, 0.5])', fontsize=11)
+    axes[1, 0].legend(fontsize=8)
+    
+    # SVM KDE with boundary note
     x_svm = np.linspace(svm_values.min() * 0.9, svm_values.max() * 1.1, 1000)
-    kde_svm = stats.gaussian_kde(svm_values)
-    axes[1].fill_between(x_svm, kde_svm(x_svm), alpha=0.5, color='darkorange')
-    axes[1].plot(x_svm, kde_svm(x_svm), color='darkorange', linewidth=2)
-    axes[1].axvline(svm_values.min(), color='red', linestyle='--', 
-                    label=f'Min: {svm_values.min():.4f}', linewidth=1.5)
-    axes[1].set_xlabel('Performance Value (to minimize)', fontsize=11)
-    axes[1].set_ylabel('Density', fontsize=11)
-    axes[1].set_title('SVM Benchmark: Kernel Density Estimate', fontsize=12)
-    axes[1].legend()
+    kde_svm = stats.gaussian_kde(svm_values)  # Uses Scott's rule by default
+    axes[1, 1].fill_between(x_svm, kde_svm(x_svm), alpha=0.5, color='darkorange')
+    axes[1, 1].plot(x_svm, kde_svm(x_svm), color='darkorange', linewidth=2)
+    axes[1, 1].axvline(svm_values.min(), color='red', linestyle='--', 
+                       label=f'Min: {svm_values.min():.4f}', linewidth=1.5)
+    axes[1, 1].set_xlabel('Performance Value (error rate)', fontsize=10)
+    axes[1, 1].set_ylabel('Density', fontsize=10)
+    axes[1, 1].set_title('SVM Benchmark: KDE (note: boundary leakage possible)', fontsize=11)
+    axes[1, 1].legend()
     
+    plt.suptitle('Distribution Analysis: Histograms and KDEs for Benchmark Datasets', fontsize=13, y=1.01)
     plt.tight_layout()
     
     if save_path:
@@ -293,6 +423,10 @@ def create_kde_plots(save_path=None):
     
     interpretation = """
 INTERPRETATION OF DISTRIBUTIONS:
+
+METHODOLOGICAL NOTE: KDEs use SciPy's default bandwidth selection (Scott's rule).
+Shapes should be interpreted qualitatively. For bounded metrics like SVM error,
+Gaussian KDEs can leak density outside the feasible range [0, 0.5].
 
 LDA BENCHMARK:
 - Sample size: {} hyperparameter configurations
@@ -306,13 +440,15 @@ LDA BENCHMARK:
 
 SVM BENCHMARK:
 - Sample size: {} hyperparameter configurations  
-- Range: [{:.4f}, {:.4f}]
+- Range: [{:.4f}, {:.4f}] (bounded metric: error rate ∈ [0, 0.5])
 - Mean: {:.4f}, Std: {:.4f}
 - Shape: RIGHT-SKEWED with a pronounced mode around 0.27-0.35
 - Interpretation: The SVM error rate clusters around 0.27-0.35, suggesting
   many configurations achieve similar moderate performance. There are outliers
   at 0.5 (random chance for classification), indicating poor configurations.
   The minimum around 0.25 represents the best achievable performance.
+- Note: SVM error is a BOUNDED metric. Gaussian KDE may leak density outside
+  feasible bounds; consider logit or arcsin-sqrt transforms for bounded data.
 
 BOTH DISTRIBUTIONS ARE RIGHT-SKEWED:
 - This is common in hyperparameter optimization: there are many ways to 
@@ -400,8 +536,11 @@ def create_transformed_kde_plots(save_path=None):
     explanation = """
 LOG TRANSFORMATION ANALYSIS:
 
-The log transformation log(y) helps make the distributions more symmetric
-and closer to Gaussian, which is beneficial for GP modeling.
+IMPORTANT CLARIFICATION: GP regression assumes Gaussian noise at each input point,
+NOT that the marginal distribution of y-values across different x's must be Gaussian.
+So reducing skewness is NOT directly about satisfying GP likelihood assumptions.
+
+WHAT LOG TRANSFORMS ACTUALLY HELP WITH:
 
 SKEWNESS COMPARISON (0 = symmetric, >0 = right-skewed, <0 = left-skewed):
 
@@ -415,22 +554,26 @@ SVM Benchmark:
   - Log-transformed skewness: {:.3f}
   - Improvement: {:.1f}% reduction in skewness magnitude
 
-BENEFITS OF LOG TRANSFORMATION:
+PROPER REASONS FOR LOG TRANSFORMATION:
 
-1. SYMMETRY: Both distributions become more symmetric after log transformation,
-   with skewness closer to zero.
+1. VARIANCE COMPRESSION: Log transforms can reduce heteroscedastic-looking behavior.
+   Functions with multiplicative effects become additive in log space.
 
-2. VARIANCE STABILIZATION: The variance becomes more uniform across the range
-   of values, which helps satisfy GP assumptions.
+2. REDUCED LEVERAGE OF EXTREMES: Extreme high values have less influence on GP
+   hyperparameter fitting, leading to more robust models.
 
-3. OUTLIER COMPRESSION: Extreme high values are compressed, reducing their
-   influence on the GP fit.
+3. STATIONARY GP COMPATIBILITY: A stationary kernel fit becomes "less dominated"
+   by big-amplitude regions when values are log-compressed.
 
-4. NORMAL APPROXIMATION: The log-transformed distributions are closer to
-   Gaussian, making the GP likelihood assumption more appropriate.
+4. FOR BOUNDED METRICS (like SVM error):
+   - Log is one reasonable choice, but not ideal for bounded data
+   - Better alternatives: logit transform (after rescaling to (0,1)),
+     arcsin-sqrt (classic variance stabilizer for proportions), or
+     Box-Cox / Yeo-Johnson (learn the power transform).
 
-RECOMMENDATION: Use log-transformed objective values when fitting GPs for
-Bayesian optimization on these benchmarks.
+HYPOTHESIS TO TEST: Log transforms are a reasonable candidate for improving
+GP fit quality. We will compare marginal likelihood and calibration with and
+without transforms in the model-fitting section to validate this empirically.
 """.format(lda_skew_orig, lda_skew_log, 
            100 * (1 - abs(lda_skew_log) / abs(lda_skew_orig)),
            svm_skew_orig, svm_skew_log,
@@ -458,12 +601,17 @@ def main():
     # Bullet Point 2: Stationarity Analysis
     analyze_stationarity()
     
+    # Quantitative support for stationarity claims
+    create_gradient_magnitude_heatmap(
+        save_path=os.path.join(output_dir, 'gradient_magnitude_heatmap.png')
+    )
+    
     # Bullet Point 3: Transformation for Stationarity
     create_transformed_heatmap(
         save_path=os.path.join(output_dir, 'branin_transformed_heatmap.png')
     )
     
-    # Bullet Point 4: KDE for LDA and SVM
+    # Bullet Point 4: KDE for LDA and SVM (with histograms)
     create_kde_plots(
         save_path=os.path.join(output_dir, 'kde_lda_svm.png')
     )
@@ -478,10 +626,12 @@ def main():
     print("=" * 70)
     print(f"\nOutput files saved to: {output_dir}")
     print("  - branin_heatmap.png")
+    print("  - gradient_magnitude_heatmap.png")
     print("  - branin_transformed_heatmap.png")
     print("  - kde_lda_svm.png")
     print("  - kde_lda_svm_transformed.png")
     print("\nAll 5 bullet points from the data visualization section addressed.")
+    print("+ Gradient magnitude heatmap for quantitative stationarity support")
     print("=" * 70)
 
 

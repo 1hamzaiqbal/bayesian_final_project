@@ -97,11 +97,16 @@ def compute_gap(f_best_found, f_best_initial, f_optimum):
     return np.clip(gap, 0, 1)
 
 
-def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
-                                    n_initial=5, n_iterations=30, 
-                                    use_log_transform=False):
+def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, init_indices=None, rng=None):
     """
-    Run Bayesian optimization with a specified acquisition function.
+    Run random search experiment.
+    
+    Parameters:
+    -----------
+    init_indices : array, optional
+        Pre-specified initial indices for reproducibility (for paired comparison)
+    rng : numpy Generator, optional
+        Random number generator for reproducibility
     """
     n_pool = len(X_pool)
     available = np.ones(n_pool, dtype=bool)
@@ -110,8 +115,58 @@ def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
     y_values = []
     best_so_far = []
     
-    rng = np.random.default_rng()
-    init_indices = rng.choice(n_pool, size=n_initial, replace=False)
+    if rng is None:
+        rng = np.random.default_rng()
+    
+    if init_indices is None:
+        init_indices = rng.choice(n_pool, size=n_initial, replace=False)
+    
+    for idx in init_indices:
+        selected_indices.append(idx)
+        y_values.append(y_pool[idx])
+        available[idx] = False
+        best_so_far.append(min(y_values))
+    
+    for iteration in range(n_iterations):
+        available_indices = np.where(available)[0]
+        if len(available_indices) == 0:
+            break
+        idx = rng.choice(available_indices)
+        selected_indices.append(idx)
+        y_values.append(y_pool[idx])
+        available[idx] = False
+        best_so_far.append(min(y_values))
+    
+    return {
+        'indices': selected_indices,
+        'y_values': y_values,
+        'best_so_far': best_so_far,
+        'init_indices': init_indices
+    }
+
+
+def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
+                                    n_initial=5, n_iterations=30, 
+                                    use_log_transform=False, init_indices=None):
+    """
+    Run Bayesian optimization with a specified acquisition function.
+    
+    Parameters:
+    -----------
+    init_indices : array, optional
+        Pre-specified initial indices for reproducibility (for paired comparison)
+    """
+    n_pool = len(X_pool)
+    available = np.ones(n_pool, dtype=bool)
+    
+    selected_indices = []
+    y_values = []
+    best_so_far = []
+    
+    # Use provided init_indices OR generate random ones
+    if init_indices is None:
+        rng = np.random.default_rng()
+        init_indices = rng.choice(n_pool, size=n_initial, replace=False)
     
     for idx in init_indices:
         selected_indices.append(idx)
@@ -161,17 +216,23 @@ def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
     return {
         'indices': selected_indices,
         'y_values': y_values,
-        'best_so_far': best_so_far
+        'best_so_far': best_so_far,
+        'init_indices': init_indices  # Return for verification
     }
 
 
 def run_acquisition_comparison(n_runs=20, save_dir=None):
     """
-    Compare EI, PI, and LCB acquisition functions.
+    Compare EI, PI, LCB, and Random Search acquisition functions.
+    
+    FIXED: All methods share identical initial points per run for proper paired comparison.
+    ADDED: Random search baseline for calibration.
     """
     print("=" * 70)
     print("ACQUISITION FUNCTION COMPARISON")
     print("=" * 70)
+    print("NOTE: All methods share identical init points per run (proper pairing)")
+    print("NOTE: Log transform log(y+1) used in GP modeling; gap computed on original y")
     
     # Load datasets
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -191,13 +252,13 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
         'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True)
     }
     
-    # Acquisition functions to compare
+    # Acquisition functions to compare (including Random Search as baseline)
     acquisition_configs = {
-        'EI': {'xi': 0.01},
-        'PI': {'xi': 0.01},
+        'Random': {},  # Random search baseline
+        'EI (ξ=0.01)': {'xi': 0.01},
+        'PI (ξ=0.01)': {'xi': 0.01},
         'LCB (κ=1)': {'kappa': 1.0},
         'LCB (κ=2)': {'kappa': 2.0},
-        'LCB (κ=3)': {'kappa': 3.0},
     }
     
     all_results = {}
@@ -207,26 +268,52 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
         print(f"  {name} DATASET")
         print(f"{'='*50}")
         
+        n_pool = len(X_pool)
         dataset_results = {}
+        
+        # Pre-generate all init_indices for this dataset (shared across methods)
+        all_init_indices = []
+        for run in range(n_runs):
+            run_rng = np.random.default_rng(seed=run * 42 + 1)
+            init_indices = run_rng.choice(n_pool, size=5, replace=False)
+            all_init_indices.append(init_indices)
         
         for acq_name, acq_params in acquisition_configs.items():
             print(f"\n  Testing {acq_name}...")
             
-            # Determine base acquisition function
-            if acq_name.startswith('LCB'):
-                acq_fn = 'LCB'
-            else:
-                acq_fn = acq_name
-            
             runs = []
             for run in range(n_runs):
-                np.random.seed(run * 42)
+                init_indices = all_init_indices[run].copy()
                 
-                history = bayesian_optimization_with_acq(
-                    X_pool, y_pool, acq_fn, acq_params,
-                    n_initial=5, n_iterations=30,
-                    use_log_transform=use_log
-                )
+                if acq_name == 'Random':
+                    # Random search uses same init but random subsequent selections
+                    rs_rng = np.random.default_rng(seed=run * 42 + 100)
+                    history = random_search(
+                        X_pool, y_pool, n_initial=5, n_iterations=30,
+                        init_indices=init_indices, rng=rs_rng
+                    )
+                else:
+                    # Determine base acquisition function
+                    if acq_name.startswith('LCB'):
+                        acq_fn = 'LCB'
+                    elif acq_name.startswith('EI'):
+                        acq_fn = 'EI'
+                    elif acq_name.startswith('PI'):
+                        acq_fn = 'PI'
+                    else:
+                        acq_fn = acq_name
+                    
+                    history = bayesian_optimization_with_acq(
+                        X_pool, y_pool, acq_fn, acq_params,
+                        n_initial=5, n_iterations=30,
+                        use_log_transform=use_log,
+                        init_indices=init_indices
+                    )
+                
+                # Verify pairing
+                assert np.array_equal(history['init_indices'], all_init_indices[run]), \
+                    f"Run {run}: Init indices don't match!"
+                
                 runs.append(history)
             
             dataset_results[acq_name] = runs
@@ -246,6 +333,7 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
             'f_opt': f_opt
         }
     
+    print("\n✓ All runs verified: All methods share identical initial points per run")
     return all_results
 
 
@@ -258,11 +346,11 @@ def plot_comparison_results(all_results, save_dir):
     fig, axes = plt.subplots(1, 3, figsize=(16, 5))
     
     colors = {
-        'EI': '#1f77b4',
-        'PI': '#ff7f0e', 
+        'Random': '#7f7f7f',  # Gray for baseline
+        'EI (ξ=0.01)': '#1f77b4',
+        'PI (ξ=0.01)': '#ff7f0e', 
         'LCB (κ=1)': '#2ca02c',
         'LCB (κ=2)': '#d62728',
-        'LCB (κ=3)': '#9467bd'
     }
     
     for idx, (dataset_name, data) in enumerate(all_results.items()):
@@ -271,26 +359,32 @@ def plot_comparison_results(all_results, save_dir):
         
         for acq_name, runs in data['results'].items():
             n_obs = len(runs[0]['best_so_far'])
-            gaps = np.zeros((len(runs), n_obs))
+            n_runs = len(runs)
+            gaps = np.zeros((n_runs, n_obs))
             
             for run_idx, run in enumerate(runs):
                 f_best_initial = run['best_so_far'][4]
                 for i, best in enumerate(run['best_so_far']):
                     gaps[run_idx, i] = compute_gap(best, f_best_initial, f_opt)
             
-            x = np.arange(1, n_obs + 1)
-            mean_gap = gaps.mean(axis=0)
-            std_gap = gaps.std(axis=0)
+            # Start x-axis at 5 (gap only defined after init points)
+            x = np.arange(5, n_obs + 1)
+            mean_gap = gaps.mean(axis=0)[4:]  # Skip first 4 (gap undefined/0)
+            se_gap = gaps.std(axis=0)[4:] / np.sqrt(n_runs)  # Standard Error
             
-            ax.plot(x, mean_gap, label=acq_name, color=colors[acq_name], linewidth=2)
-            ax.fill_between(x, mean_gap - std_gap, mean_gap + std_gap, 
-                           alpha=0.15, color=colors[acq_name])
+            color = colors.get(acq_name, '#000000')
+            linestyle = '--' if acq_name == 'Random' else '-'
+            ax.plot(x, mean_gap, label=acq_name, color=color, linewidth=2, linestyle=linestyle)
+            ax.fill_between(x, 
+                           np.clip(mean_gap - se_gap, 0, 1), 
+                           np.clip(mean_gap + se_gap, 0, 1), 
+                           alpha=0.2, color=color)
         
         ax.set_xlabel('Number of Observations')
         ax.set_ylabel('Gap (higher is better)')
         ax.set_title(f'{dataset_name} Dataset')
         ax.legend(loc='lower right', fontsize=8)
-        ax.set_xlim([1, 35])
+        ax.set_xlim([5, 35])
         ax.set_ylim([0, 1.05])
         ax.grid(True, alpha=0.3)
     
@@ -306,6 +400,8 @@ def compute_statistics_and_rankings(all_results, save_dir):
     print("\n" + "=" * 70)
     print("STATISTICAL ANALYSIS AND RANKINGS")
     print("=" * 70)
+    print("NOTE: p > 0.05 means 'no significant difference', not 'equivalence'")
+    print("NOTE: Multiple comparisons not corrected (interpret with caution)")
     
     summary_stats = {}
     
@@ -316,6 +412,7 @@ def compute_statistics_and_rankings(all_results, save_dir):
         
         f_opt = data['f_opt']
         stats_list = []
+        n_runs = None
         
         for acq_name, runs in data['results'].items():
             final_gaps = []
@@ -326,31 +423,35 @@ def compute_statistics_and_rankings(all_results, save_dir):
                 final_gaps.append(gap)
             
             final_gaps = np.array(final_gaps)
+            n_runs = len(final_gaps)
             stats_list.append({
                 'name': acq_name,
                 'mean': final_gaps.mean(),
                 'std': final_gaps.std(),
+                'se': final_gaps.std() / np.sqrt(n_runs),
                 'gaps': final_gaps
             })
         
         # Sort by mean gap (descending)
         stats_list.sort(key=lambda x: x['mean'], reverse=True)
         
-        print(f"\n  Rankings (by mean gap):")
-        print(f"  {'Rank':<5} {'Acquisition':<15} {'Mean Gap':<12} {'Std':<10}")
+        print(f"\n  Rankings (by mean gap, n={n_runs} runs):")
+        print(f"  {'Rank':<5} {'Acquisition':<15} {'Mean Gap':<12} {'±SE':<10}")
         print("  " + "-" * 45)
         
         for rank, stat in enumerate(stats_list):
-            print(f"  {rank+1:<5} {stat['name']:<15} {stat['mean']:<12.4f} {stat['std']:<10.4f}")
+            print(f"  {rank+1:<5} {stat['name']:<15} {stat['mean']:<12.4f} ±{stat['se']:<9.4f}")
         
         # Paired t-tests: compare best against others
         best = stats_list[0]
         print(f"\n  Paired t-tests ({best['name']} vs others):")
+        print(f"  (Differences are NOT corrected for multiple comparisons)")
         
         for stat in stats_list[1:]:
             t_stat, p_value = stats.ttest_rel(best['gaps'], stat['gaps'])
-            sig = "*" if p_value < 0.05 else ""
-            print(f"    vs {stat['name']:<12}: t={t_stat:7.3f}, p={p_value:.4f} {sig}")
+            effect_size = (best['mean'] - stat['mean']) / np.sqrt((best['std']**2 + stat['std']**2)/2)
+            sig_marker = "*" if p_value < 0.05 else "(n.s.)"
+            print(f"    vs {stat['name']:<12}: t={t_stat:7.3f}, p={p_value:.4f}, d={effect_size:+.2f} {sig_marker}")
         
         summary_stats[dataset_name] = stats_list
     
@@ -372,6 +473,14 @@ def create_kappa_sensitivity_plot(save_dir):
     
     kappa_values = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
     n_runs = 20
+    n_pool = len(X_pool)
+    
+    # Pre-generate all init_indices (SHARED across all κ values for fair comparison)
+    all_init_indices = []
+    for run in range(n_runs):
+        run_rng = np.random.default_rng(seed=run * 42 + 1)
+        init_indices = run_rng.choice(n_pool, size=5, replace=False)
+        all_init_indices.append(init_indices)
     
     results_by_kappa = {}
     
@@ -380,12 +489,13 @@ def create_kappa_sensitivity_plot(save_dir):
         
         gaps = []
         for run in range(n_runs):
-            np.random.seed(run * 42)
+            init_indices = all_init_indices[run].copy()
             
             history = bayesian_optimization_with_acq(
                 X_pool, y_pool, 'LCB', {'kappa': kappa},
                 n_initial=5, n_iterations=30,
-                use_log_transform=True
+                use_log_transform=True,
+                init_indices=init_indices
             )
             
             f_best_initial = history['best_so_far'][4]
@@ -395,35 +505,60 @@ def create_kappa_sensitivity_plot(save_dir):
         
         results_by_kappa[kappa] = np.array(gaps)
     
-    # Plot
+    # Plot with SE (not std)
     kappas = list(results_by_kappa.keys())
     means = [results_by_kappa[k].mean() for k in kappas]
-    stds = [results_by_kappa[k].std() for k in kappas]
+    ses = [results_by_kappa[k].std() / np.sqrt(n_runs) for k in kappas]
     
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.errorbar(kappas, means, yerr=stds, marker='o', capsize=5, 
+    ax.errorbar(kappas, means, yerr=ses, marker='o', capsize=5, 
                 linewidth=2, markersize=8, color='#d62728')
     
     ax.set_xlabel('κ (exploration-exploitation trade-off)', fontsize=11)
-    ax.set_ylabel('Mean Gap (±std)', fontsize=11)
-    ax.set_title('LCB Sensitivity to κ on Branin Function', fontsize=12)
+    ax.set_ylabel('Mean Gap (±SE)', fontsize=11)
+    ax.set_title('LCB Sensitivity to κ on Branin Function\n(All κ values share identical init points per run)', fontsize=11)
     ax.grid(True, alpha=0.3)
     ax.set_ylim([0.5, 1.05])
     
-    # Mark optimal κ
+    # Find best κ but check if statistically indistinguishable from others
     best_idx = np.argmax(means)
-    ax.annotate(f'Best: κ={kappas[best_idx]}', 
+    best_kappa = kappas[best_idx]
+    
+    # Check if top-2 are statistically different
+    sorted_idx = np.argsort(means)[::-1]
+    if len(sorted_idx) >= 2:
+        best_gaps = results_by_kappa[kappas[sorted_idx[0]]]
+        second_gaps = results_by_kappa[kappas[sorted_idx[1]]]
+        _, p_val = stats.ttest_rel(best_gaps, second_gaps)
+        
+        if p_val > 0.05:
+            annotation = f'Top κ values indistinguishable (p={p_val:.2f})'
+        else:
+            annotation = f'Best: κ={best_kappa}'
+    else:
+        annotation = f'Best: κ={best_kappa}'
+    
+    ax.annotate(annotation, 
                 xy=(kappas[best_idx], means[best_idx]),
-                xytext=(kappas[best_idx] + 0.5, means[best_idx] - 0.1),
+                xytext=(kappas[best_idx] + 0.8, means[best_idx] - 0.08),
                 arrowprops=dict(arrowstyle='->', color='black'),
-                fontsize=10)
+                fontsize=9)
     
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'kappa_sensitivity.png'), dpi=150, bbox_inches='tight')
     plt.close()
     print("Saved: kappa_sensitivity.png")
     
-    print(f"\n  Optimal κ = {kappas[best_idx]} with mean gap = {means[best_idx]:.4f}")
+    # Print full table
+    print(f"\n  κ Sensitivity Results (n={n_runs} runs, shared init):")
+    print(f"  {'κ':<8} {'Mean Gap':<12} {'±SE':<10}")
+    print("  " + "-" * 30)
+    for k in kappas:
+        mean = results_by_kappa[k].mean()
+        se = results_by_kappa[k].std() / np.sqrt(n_runs)
+        print(f"  {k:<8.1f} {mean:<12.4f} ±{se:<9.4f}")
+    
+    print(f"\n  Best κ = {best_kappa} with mean gap = {means[best_idx]:.4f}")
     
     return results_by_kappa
 

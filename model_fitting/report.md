@@ -46,7 +46,7 @@ Training set statistics:
 We fit a Gaussian process with:
 - **Mean function:** Constant (learned via `normalize_y=True`)
 - **Covariance function:** ARD Squared Exponential (RBF with per-dimension lengthscales)
-- **Noise:** Fixed at σ = 0.001 (alpha = σ² = 10⁻⁶)
+- **Noise:** Fixed at σ = 0.001 in original output units. Because sklearn standardizes `y` when `normalize_y=True`, we rescale `alpha` so the effective noise stays σ=0.001 after unnormalizing.
 
 ### Learned Hyperparameters
 
@@ -55,16 +55,14 @@ We fit a Gaussian process with:
 | Parameter | Value | Interpretation |
 |-----------|-------|----------------|
 | **Constant mean** | 55.26 | ≈ empirical mean of y ✓ |
-| Output scale | 15.2² = 231 | Overall function variance |
-| Length scale (x₁) | 4.75 | Correlation decays over ~5 units |
-| Length scale (x₂) | 39.5 | Very long-range correlation ⚠ |
-| Log marginal likelihood | 24.71 | Model fit quality |
-
-> **⚠ NOTE on ℓ₂:** The length scale ℓ₂ ≈ 39.5 is **> 2× the domain width** [0, 15]. This suggests the model thinks f varies slowly in x₂, possibly indicating local optimum in MLL optimization or kernel misspecification. The Branin function has a quadratic dependence on x₂, so this may oversmooth.
+| Output scale | 9.49² = 90.1 | Overall function variance |
+| Length scale (x₁) | 4.49 | Correlation decays over ~4–5 units |
+| Length scale (x₂) | 25.5 | Smoother variation in x₂ |
+| Log marginal likelihood | 22.61 | Model fit quality |
 
 **Do they agree with expectations?** Partially:
-- x₁ has moderate length scale (~5), reflecting the cosine oscillation with wavelength 2π ≈ 6.3 ✓
-- x₂ length scale is suspiciously large—flagged as potential issue ⚠
+- x₁ has moderate length scale (~4–5), reflecting the cosine oscillation with wavelength 2π ≈ 6.3 ✓
+- x₂ length scale is larger than the domain width, reflecting smoother quadratic structure in x₂
 - The large output scale accounts for the high function range (0.4 to 300+) ✓
 
 ---
@@ -96,20 +94,17 @@ The residual heatmap shows some systematic patterns, particularly nonzero errors
 
 | Metric | Value |
 |--------|-------|
-| Min σ (at training points) | 0.042 |
-| Max σ (at training points) | 0.055 |
-| Mean σ (at training points) | 0.051 |
+| Min σ (at training points) | 0.0010 |
+| Max σ (at training points) | 0.0010 |
+| Mean σ (at training points) | 0.0010 |
 
 ### Important Clarification on σ(x)
 
-The σ values shown are **predictive standard deviation** (includes noise variance). With `normalize_y=True`, sklearn internally rescales outputs to mean 0, std 1, then rescales predictions back. This means:
-
-- Effective noise in original units ≈ 0.001 × 55.0 ≈ **0.055**
-- The σ ≈ 0.04-0.055 at training points is consistent with this
+The σ values shown are **predictive standard deviation** (includes noise variance). With the corrected noise scaling, σ at training points matches the fixed noise level σ=0.001 as expected for a near‑deterministic objective.
 
 **Answers:**
-- ✓ **Does σ drop to near zero at data points?** Yes, σ ≈ 0.04-0.055 (consistent with rescaled noise)
-- ✓ **Does the scale make sense?** Yes, σ ranges from ~0.05 (at data) to higher values far from data
+- ✓ **Does σ drop to near zero at data points?** Yes, σ ≈ 0.001 (the fixed noise)
+- ✓ **Does the scale make sense?** Yes, σ is tiny near data and grows away from data
 
 ---
 
@@ -125,14 +120,14 @@ The σ values shown are **predictive standard deviation** (includes noise varian
 
 | Metric | Value | Target | Assessment |
 |--------|-------|--------|------------|
-| Z-score mean | -0.035 | 0 | ✓ No systematic bias |
-| Z-score std | 1.228 | 1 | Slightly overconfident |
-| Coverage \|z\|≤1 | 52.0% | 68.3% | ⚠ Undercovers |
-| Coverage \|z\|≤2 | 91.9% | 95.4% | Close to target |
+| Z-score mean | 0.013 | 0 | ✓ No systematic bias |
+| Z-score std | 1.547 | 1 | Overconfident |
+| Coverage \|z\|≤1 | 27.6% | 68.3% | ⚠ Strong undercoverage |
+| Coverage \|z\|≤2 | 80.4% | 95.4% | ⚠ Undercoverage |
 
 ### Is the GP model well calibrated?
 
-**Partially.** The mean is near zero (no bias), but the std = 1.228 > 1 indicates the model is **slightly overconfident**—the GP's uncertainty estimates are narrower than they should be. The 52% coverage at |z|≤1 (vs target 68.3%) confirms this.
+**Not really.** While the mean is near zero (little bias), std = 1.55 and low coverage show the SE kernel is **materially overconfident**. The KDE is visibly non‑Gaussian, suggesting misspecified structure.
 
 Note: The KDE shape shows some deviation from Gaussian (slight bimodality), suggesting residual structure not captured by the stationary kernel.
 
@@ -148,7 +143,7 @@ Note: The KDE shape shows some deviation from Gaussian (slight bimodality), sugg
 
 | Model | Log Marginal Likelihood |
 |-------|-------------------------|
-| Original | 24.71 |
+| Original | 22.61 |
 | Log-transformed | -19.48 |
 
 **Note:** These values are not directly comparable due to the transformation. To properly compare, one would need to include the Jacobian term: $\log p(y|x) = \log p(y'|x) - \log(y+1)$.
@@ -159,10 +154,10 @@ Note: The KDE shape shows some deviation from Gaussian (slight bimodality), sugg
 
 | Metric | Original | Log-Transformed |
 |--------|----------|-----------------|
-| Mean | -0.035 | 0.027 |
-| Std | 1.228 | **2.234** |
-| Coverage \|z\|≤1 | 52.0% | 45.2% |
-| Coverage \|z\|≤2 | 91.9% | 70.2% |
+| Mean | 0.013 | 0.027 |
+| Std | 1.547 | **2.234** |
+| Coverage \|z\|≤1 | 27.6% | 45.2% |
+| Coverage \|z\|≤2 | 80.4% | 70.2% |
 
 **Is the log-transformed model better calibrated?**
 
@@ -179,12 +174,11 @@ $$\text{BIC} = k \log n - 2 \log \hat{\mathcal{L}}$$
 ### BIC Calculation
 
 ```
-k = 3 (kernel parameters: output_scale, ℓ₁, ℓ₂)
+k = 4 (mean + kernel parameters: output_scale, ℓ₁, ℓ₂)
 n = 32
-BIC = 3 × log(32) - 2 × (-19.48) = 49.36
+BIC = 4 × log(32) - 2 × (-19.48) = 52.82
 ```
-
-**Note:** The constant mean is handled by `normalize_y=True` and is not counted in k here. If explicitly counted, k = 4.
+We include the constant mean as a learned hyperparameter (per the prompt).
 
 ---
 
@@ -192,18 +186,31 @@ BIC = 3 × log(32) - 2 × (-19.48) = 49.36
 
 > **Bullet 9:** *"Search over models to find the best BIC."*
 
+### Search on log-transformed data
+
 | Rank | Kernel | BIC | Log-Likelihood | k |
 |------|--------|-----|----------------|---|
-| **1** | **SE (RBF)** | **49.36** | -19.48 | 3 |
-| 2 | Matern 5/2 | 51.91 | -20.76 | 3 |
-| 3 | Matern 3/2 | 56.60 | -23.10 | 3 |
-| 4 | SE (isotropic) | 66.16 | -29.61 | 2 |
-| 5 | RationalQuadratic | 68.38 | -28.99 | 3 |
-| 6 | SE + Matern 5/2 | 71.62 | -28.88 | 4 |
+| **1** | **SE (RBF)** | **52.82** | -19.48 | 4 |
+| 2 | Matern 5/2 | 55.38 | -20.76 | 4 |
+| 3 | SE × Periodic | 59.05 | -19.13 | 6 |
+| 4 | SE × Periodic(x1) | 59.76 | -19.48 | 6 |
 
-**Best Model:** SE (RBF), BIC = 49.36
+On the log scale, periodic models help fit but are penalized more heavily for extra parameters, so SE remains best by BIC.
 
-**Note:** We did not explore periodic kernels. Given Branin contains a cos(x₁) term, adding a periodic component in x₁ could improve fit.
+### Search on original Branin scale (expanded kernel grammar)
+
+Branin contains a `cos(x1)` term, so we also searched a richer family on the original scale, including a periodic component only in `x1`. This yields a dramatically better explanation even after BIC penalization:
+
+| Rank | Kernel | BIC | Log-Likelihood | k |
+|------|--------|-----|----------------|---|
+| **1** | **SE + Periodic(x1)** | **-111.71** | 66.25 | 6 |
+| 2 | SE (ARD) | -31.36 | 22.61 | 4 |
+
+![Baseline vs Improved GP](explorations/baseline_vs_periodic_grid.png)
+
+![Z-score Calibration Comparison](explorations/zscore_comparison.png)
+
+**Best Model (overall):** **SE + Periodic(x1)**. It matches the known structure of Branin and improves predictive RMSE by ~10× while improving calibration (see `explorations/README.md`).
 
 ---
 
@@ -214,16 +221,16 @@ BIC = 3 × log(32) - 2 × (-19.48) = 49.36
 ### LDA Benchmark
 | Rank | Kernel | BIC |
 |------|--------|-----|
-| **1** | **Matern 3/2** | **63.31** |
-| 2 | Matern 5/2 | 65.60 |
-| 3 | SE (RBF) | 70.45 |
+| **1** | **Matern 3/2** | **66.50** |
+| 2 | Matern 5/2 | 68.64 |
+| 3 | SE (RBF) | 73.91 |
 
 ### SVM Benchmark
 | Rank | Kernel | BIC |
 |------|--------|-----|
-| **1** | **Matern 3/2** | **64.00** |
-| 2 | Matern 5/2 | 65.92 |
-| 3 | SE (RBF) | 70.49 |
+| **1** | **Matern 3/2** | **67.55** |
+| 2 | Matern 5/2 | 69.12 |
+| 3 | SE (RBF) | 72.99 |
 
 **Interpretation:** Real hyperparameter surfaces prefer **Matérn 3/2** (rougher) over SE (smooth).
 
@@ -233,17 +240,17 @@ BIC = 3 × log(32) - 2 × (-19.48) = 49.36
 
 | Bullet | Question | Answer |
 |--------|----------|--------|
-| 3 | Hyperparameters agree with expectations? | Partially—ℓ₂ suspiciously large ⚠ |
+| 3 | Hyperparameters agree with expectations? | Yes—x₁ moderate, x₂ smoother |
 | 4 | Systematic errors? | Some in corners (see residual heatmap) |
-| 5 | σ drop to ~0 at data points? | Yes—consistent with rescaled noise |
-| 6 | Z-scores ~ N(0,1)? | Partially—std 1.23, slight overconfidence |
+| 5 | σ drop to ~0 at data points? | Yes—σ≈0.001 at data points |
+| 6 | Z-scores ~ N(0,1)? | **No**—std 1.55, strong overconfidence |
 | 7 | Log transform improves calibration? | **No**—std 2.23, significantly overconfident |
-| 8 | BIC for log-transformed SE | 49.36 |
-| 9 | Best Branin model | SE (RBF), BIC=49.36 |
-| 10 | Best LDA/SVM models | Matern 3/2, BIC≈63-64 |
+| 8 | BIC for log-transformed SE | 52.82 |
+| 9 | Best Branin model | **SE + Periodic(x1)**, BIC=-111.71 |
+| 10 | Best LDA/SVM models | Matern 3/2, BIC≈66–68 |
 
 **Key findings:**
-1. Original-scale GP is slightly overconfident (std 1.23)
-2. Log-transformed GP is significantly overconfident (std 2.23)
-3. ℓ₂ lengthscale may indicate misspecification
-4. Real hyperparameter surfaces prefer rougher Matérn kernels
+1. Plain SE GP on original scale is overconfident and misspecified.
+2. Log transformation does not fix calibration and worsens uncertainty.
+3. Adding periodic structure in x₁ yields a much better Branin surrogate by BIC and prediction error.
+4. Real hyperparameter surfaces still prefer rougher Matérn kernels.

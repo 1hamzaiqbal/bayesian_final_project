@@ -23,8 +23,49 @@ warnings.filterwarnings('ignore')
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
-    RBF, ConstantKernel, Matern
+    Kernel, RBF, ConstantKernel, Matern, ExpSineSquared
 )
+
+
+class ActiveDimKernel(Kernel):
+    """Apply a base kernel to selected input dimensions."""
+
+    def __init__(self, base_kernel, active_dims):
+        self.base_kernel = base_kernel
+        self.active_dims = tuple(active_dims)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X_sub = X[:, self.active_dims]
+        Y_sub = None if Y is None else Y[:, self.active_dims]
+        return self.base_kernel(X_sub, Y_sub, eval_gradient=eval_gradient)
+
+    def diag(self, X):
+        return self.base_kernel.diag(X[:, self.active_dims])
+
+    def is_stationary(self):
+        return self.base_kernel.is_stationary()
+
+    @property
+    def hyperparameters(self):
+        return self.base_kernel.hyperparameters
+
+    @property
+    def theta(self):
+        return self.base_kernel.theta
+
+    @theta.setter
+    def theta(self, theta):
+        self.base_kernel.theta = theta
+
+    @property
+    def bounds(self):
+        return self.base_kernel.bounds
+
+    def get_params(self, deep=True):
+        return {"base_kernel": self.base_kernel, "active_dims": self.active_dims}
+
+    def clone_with_theta(self, theta):
+        return ActiveDimKernel(self.base_kernel.clone_with_theta(theta), self.active_dims)
 
 
 def branin(x1, x2, a=1, b=5.1/(4*np.pi**2), c=5/np.pi, r=6, s=10, t=1/(8*np.pi)):
@@ -75,17 +116,24 @@ def expected_improvement(mu, sigma, f_best, xi=0.01):
     return ei
 
 
-def fit_gp(X, y, kernel=None, noise_level=0.001):
-    """Fit a Gaussian process model."""
+def fit_gp(X, y, kernel=None, noise_level=0.001, normalize_y=True, n_restarts=8):
+    """Fit a Gaussian process model, respecting noise in original units."""
     if kernel is None:
         n_dim = X.shape[1]
         kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0]*n_dim)
-    
+
+    # sklearn rescales y when normalize_y=True; scale alpha so noise_level is in original units
+    alpha = noise_level**2
+    if normalize_y:
+        y_std = np.std(y)
+        if y_std > 0:
+            alpha = (noise_level / y_std) ** 2
+
     gp = GaussianProcessRegressor(
         kernel=kernel,
-        alpha=noise_level**2,
-        n_restarts_optimizer=5,
-        normalize_y=True,
+        alpha=alpha,
+        n_restarts_optimizer=n_restarts,
+        normalize_y=normalize_y,
         random_state=42
     )
     gp.fit(X, y)
@@ -274,14 +322,16 @@ def create_ei_heatmaps(save_dir):
     X_train = qmc.scale(X_train, [-5, 0], [10, 15])
     y_train = branin(X_train[:, 0], X_train[:, 1])
     
-    # Log transform
-    y_train_log = np.log(y_train + 1)
+    # Fit GP with best model from model fitting: SE + Periodic(x1) on original scale
+    rbf = RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
+    periodic_x1 = ActiveDimKernel(
+        ExpSineSquared(length_scale=1.0, periodicity=2 * np.pi),
+        active_dims=[0],
+    )
+    kernel = ConstantKernel(1.0) * (rbf + periodic_x1)
+    gp = fit_gp(X_train, y_train, kernel)
     
-    # Fit GP with best model from model fitting (SE kernel)
-    kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0, 1.0])
-    gp = fit_gp(X_train, y_train_log, kernel)
-    
-    print(f"Fitted GP on 32 log-transformed Branin points")
+    print(f"Fitted GP on 32 original-scale Branin points")
     print(f"Kernel: {gp.kernel_}")
     
     # Create prediction grid
@@ -293,8 +343,8 @@ def create_ei_heatmaps(save_dir):
     # Get predictions
     mu, sigma = gp.predict(X_grid, return_std=True)
     
-    # Compute EI
-    f_best = y_train_log.min()
+    # Compute EI on original scale
+    f_best = y_train.min()
     ei = expected_improvement(mu, sigma, f_best)
     
     mu = mu.reshape(X1.shape)
@@ -316,7 +366,7 @@ def create_ei_heatmaps(save_dir):
     im0 = axes[0].imshow(mu, extent=[-5, 10, 0, 15], origin='lower', aspect='auto', cmap='viridis')
     axes[0].scatter(X_train[:, 0], X_train[:, 1], c='red', s=30, edgecolor='white', zorder=5)
     axes[0].set_xlabel('$x_1$'); axes[0].set_ylabel('$x_2$')
-    axes[0].set_title('GP Posterior Mean (log scale)')
+    axes[0].set_title('GP Posterior Mean')
     plt.colorbar(im0, ax=axes[0], label='$\\mu(x)$')
     
     # Posterior std
@@ -374,11 +424,16 @@ def run_experiments(n_runs=20, save_dir=None):
     f_opt_branin = 0.397887  # Known optimum
     
     # Branin uses SE kernel, LDA/SVM use Matern 3/2 (as per model fitting results)
-    kernel_branin = ConstantKernel(1.0) * RBF(length_scale=[1.0, 1.0])
+    rbf2 = RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
+    periodic_x1 = ActiveDimKernel(
+        ExpSineSquared(length_scale=1.0, periodicity=2 * np.pi),
+        active_dims=[0],
+    )
+    kernel_branin = ConstantKernel(1.0) * (rbf2 + periodic_x1)
     kernel_matern = ConstantKernel(1.0) * Matern(length_scale=[1.0, 1.0, 1.0], nu=1.5)
     
     datasets = {
-        'Branin': (X_branin, y_branin, f_opt_branin, True, kernel_branin),  # (X, y, f_opt, use_log, kernel)
+        'Branin': (X_branin, y_branin, f_opt_branin, False, kernel_branin),  # original-scale periodic surrogate
         'LDA': (lda_data[:, :3], lda_data[:, 3], lda_data[:, 3].min(), True, kernel_matern),
         'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True, kernel_matern)
     }
@@ -390,7 +445,7 @@ def run_experiments(n_runs=20, save_dir=None):
         print(f"  {name} DATASET")
         print(f"{'='*50}")
         print(f"Pool size: {len(X_pool)}, Optimum: {f_opt:.6f}")
-        print(f"Kernel: {'RBF' if name == 'Branin' else 'Matern 3/2'}")
+        print(f"Kernel: {'SE + Periodic(x1)' if name == 'Branin' else 'Matern 3/2'}")
         
         bo_results = []
         rs_results = []

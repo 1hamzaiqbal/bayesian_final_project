@@ -26,12 +26,53 @@ warnings.filterwarnings('ignore')
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
-    RBF, ConstantKernel, Matern, RationalQuadratic, 
+    Kernel, RBF, ConstantKernel, Matern, RationalQuadratic,
     WhiteKernel, ExpSineSquared, DotProduct
 )
 
 # Add parent directory to path to import branin function
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+class ActiveDimKernel(Kernel):
+    """Apply a base kernel to selected input dimensions."""
+
+    def __init__(self, base_kernel, active_dims):
+        self.base_kernel = base_kernel
+        self.active_dims = tuple(active_dims)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X_sub = X[:, self.active_dims]
+        Y_sub = None if Y is None else Y[:, self.active_dims]
+        return self.base_kernel(X_sub, Y_sub, eval_gradient=eval_gradient)
+
+    def diag(self, X):
+        return self.base_kernel.diag(X[:, self.active_dims])
+
+    def is_stationary(self):
+        return self.base_kernel.is_stationary()
+
+    @property
+    def hyperparameters(self):
+        return self.base_kernel.hyperparameters
+
+    @property
+    def theta(self):
+        return self.base_kernel.theta
+
+    @theta.setter
+    def theta(self, theta):
+        self.base_kernel.theta = theta
+
+    @property
+    def bounds(self):
+        return self.base_kernel.bounds
+
+    def get_params(self, deep=True):
+        return {"base_kernel": self.base_kernel, "active_dims": self.active_dims}
+
+    def clone_with_theta(self, theta):
+        return ActiveDimKernel(self.base_kernel.clone_with_theta(theta), self.active_dims)
 
 
 def branin(x1, x2, a=1, b=5.1/(4*np.pi**2), c=5/np.pi, r=6, s=10, t=1/(8*np.pi)):
@@ -68,7 +109,7 @@ def generate_sobol_points(n_points, bounds, seed=42):
     return scaled_points
 
 
-def fit_gp(X, y, kernel, noise_level=0.001, n_restarts=10):
+def fit_gp(X, y, kernel, noise_level=0.001, n_restarts=10, normalize_y=True):
     """
     Fit a Gaussian process with given kernel.
     
@@ -89,18 +130,26 @@ def fit_gp(X, y, kernel, noise_level=0.001, n_restarts=10):
     --------
     gp : fitted GaussianProcessRegressor
     """
+    # sklearn rescales y internally when normalize_y=True. To keep the noise
+    # level interpretable in original output units, scale alpha accordingly.
+    alpha = noise_level**2  # alpha is variance, not std
+    if normalize_y:
+        y_std = np.std(y)
+        if y_std > 0:
+            alpha = (noise_level / y_std) ** 2
+
     gp = GaussianProcessRegressor(
         kernel=kernel,
-        alpha=noise_level**2,  # alpha is variance, not std
+        alpha=alpha,
         n_restarts_optimizer=n_restarts,
-        normalize_y=True,
+        normalize_y=normalize_y,
         random_state=42
     )
     gp.fit(X, y)
     return gp
 
 
-def compute_bic(gp, X, y):
+def compute_bic(gp, X, y, include_mean=True):
     """
     Compute Bayesian Information Criterion.
     
@@ -111,8 +160,8 @@ def compute_bic(gp, X, y):
     log_likelihood = gp.log_marginal_likelihood_value_
     n = len(y)
     
-    # Count hyperparameters from kernel
-    k = gp.kernel_.n_dims
+    # Count hyperparameters from kernel (+ mean if learned)
+    k = gp.kernel_.n_dims + (1 if include_mean else 0)
     
     bic = k * np.log(n) - 2 * log_likelihood
     return bic, log_likelihood, k
@@ -334,12 +383,28 @@ def search_kernels(X, y, noise_level=0.001, verbose=True):
         'SE + Matern 5/2': ConstantKernel(1.0) * RBF(length_scale=1.0) + ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5),
         'SE (isotropic)': ConstantKernel(1.0) * RBF(length_scale=1.0),
     }
+
+    # Branin has a clear periodic component in x1 (cos term) and a global trend;
+    # try richer compositional kernels in 2D only.
+    if n_dim == 2:
+        periodic_x1 = ActiveDimKernel(
+            ExpSineSquared(length_scale=1.0, periodicity=2 * np.pi),
+            active_dims=[0],
+        )
+        kernels.update({
+            'Periodic (isotropic)': ConstantKernel(1.0) * ExpSineSquared(length_scale=1.0, periodicity=2*np.pi),
+            'SE + Periodic': ConstantKernel(1.0) * (RBF(length_scale=[1.0]*n_dim) + ExpSineSquared(length_scale=1.0, periodicity=2*np.pi)),
+            'SE × Periodic': ConstantKernel(1.0) * (RBF(length_scale=[1.0]*n_dim) * ExpSineSquared(length_scale=1.0, periodicity=2*np.pi)),
+            'SE + Periodic(x1)': ConstantKernel(1.0) * (RBF(length_scale=[1.0]*n_dim) + periodic_x1),
+            'SE × Periodic(x1)': ConstantKernel(1.0) * (RBF(length_scale=[1.0]*n_dim) * periodic_x1),
+            'SE + Linear': ConstantKernel(1.0) * (RBF(length_scale=[1.0]*n_dim) + DotProduct(sigma_0=1.0)),
+        })
     
     results = []
     
     for name, kernel in kernels.items():
         try:
-            gp = fit_gp(X, y, kernel, noise_level=noise_level)
+            gp = fit_gp(X, y, kernel, noise_level=noise_level, normalize_y=True)
             bic, ll, k = compute_bic(gp, X, y)
             results.append({
                 'name': name,
@@ -382,7 +447,7 @@ def analyze_branin_original(save_dir):
     # Fit GP with SE kernel
     print("\n--- Fitting GP with Constant Mean + ARD SE Kernel ---")
     kernel = ConstantKernel(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
-    gp = fit_gp(X_train, y_train, kernel, noise_level=0.001)
+    gp = fit_gp(X_train, y_train, kernel, noise_level=0.001, normalize_y=True)
     
     # Report hyperparameters including mean
     print("\nLearned Hyperparameters:")
@@ -401,11 +466,19 @@ def analyze_branin_original(save_dir):
     print(f"    - The length scales control how quickly correlation decays with distance")
     print(f"    - Given domain: x1 ∈ [-5, 10] (width 15), x2 ∈ [0, 15] (width 15)")
     
-    # Acknowledge large ℓ₂ issue
-    print(f"\n  ⚠ NOTE: ℓ₂ ≈ 39.5 is > 2× the domain width [0, 15].")
-    print(f"    This suggests the model thinks f varies slowly in x2,")
-    print(f"    possibly indicating local optimum in MLL optimization or misspecification.")
-    print(f"    The Branin function has a quadratic dependence on x2, so this may oversmooth.")
+    # Acknowledge large ℓ₂ issue if present
+    try:
+        length_scales = np.atleast_1d(gp.kernel_.k2.length_scale)
+        if len(length_scales) >= 2:
+            l2 = float(length_scales[1])
+            x2_width = bounds[1][1] - bounds[1][0]
+            if l2 > 2 * x2_width:
+                print(f"\n  ⚠ NOTE: ℓ₂ ≈ {l2:.2f} is > 2× the domain width [{bounds[1][0]}, {bounds[1][1]}].")
+                print(f"    This suggests the model thinks f varies slowly in x2,")
+                print(f"    possibly indicating local optimum in MLL optimization or misspecification.")
+                print(f"    The Branin function has a quadratic dependence on x2, so this may oversmooth.")
+    except Exception:
+        pass
     
     # Create heatmaps
     print("\n--- Creating Posterior Heatmaps ---")
@@ -426,9 +499,8 @@ def analyze_branin_original(save_dir):
     print(f"  Min: {y_std_train.min():.6f}")
     print(f"  Max: {y_std_train.max():.6f}")
     print(f"  Mean: {y_std_train.mean():.6f}")
-    print(f"  NOTE: σ(x) is PREDICTIVE std (includes noise variance)")
-    print(f"  With normalize_y=True, sklearn rescales σ by data std ({y_train.std():.1f})")
-    print(f"  So effective noise in original units ≈ 0.001 × {y_train.std():.1f} ≈ {0.001 * y_train.std():.3f}")
+    print(f"  NOTE: σ(x) is PREDICTIVE std (includes noise variance).")
+    print(f"  We scale alpha by y-std so the effective noise std stays ≈ 0.001 in original units.")
     
     # Z-score calibration
     print("\n--- Z-Score Calibration Analysis ---")
@@ -470,7 +542,7 @@ def analyze_high_noise(X_train, y_train, save_dir):
     # Fit GP with high noise
     print("\n--- Fitting GP with High Noise Level (σ=10) ---")
     kernel = ConstantKernel(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
-    gp_high_noise = fit_gp(X_train, y_train, kernel, noise_level=10.0)
+    gp_high_noise = fit_gp(X_train, y_train, kernel, noise_level=10.0, normalize_y=True)
     
     print(f"\nLearned Hyperparameters (high noise):")
     print(f"  Kernel: {gp_high_noise.kernel_}")
@@ -560,7 +632,7 @@ def analyze_branin_log_transformed(X_train, save_dir):
     # Fit GP
     print("\n--- Fitting GP with Log-Transformed Data ---")
     kernel = ConstantKernel(1.0, (1e-3, 1e3)) * RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
-    gp_log = fit_gp(X_train, y_log, kernel, noise_level=0.001)
+    gp_log = fit_gp(X_train, y_log, kernel, noise_level=0.001, normalize_y=True)
     
     print(f"\nLearned Hyperparameters:")
     print(f"  Kernel: {gp_log.kernel_}")
@@ -730,6 +802,14 @@ def main():
     
     # Part 3: BIC and model search
     branin_results = compute_bic_analysis(gp_log, y_log, X_train, save_dir)
+
+    # Extra: model search on original (untransformed) Branin scale
+    print("\n--- Searching Over Different Kernels (original Branin scale) ---")
+    branin_original_results = search_kernels(X_train, y_train, noise_level=0.001)
+    best_orig = branin_original_results[0]
+    print(f"\n*** Best Original-Scale Model: {best_orig['name']} ***")
+    print(f"    BIC: {best_orig['bic']:.4f}")
+    print(f"    Fitted kernel: {best_orig['kernel']}")
     
     # Part 4: Real benchmarks
     benchmark_results = analyze_real_benchmarks(save_dir)
@@ -748,6 +828,7 @@ def main():
     
     print("\nBest models found:")
     print(f"  Branin (log): {branin_results[0]['name']} (BIC: {branin_results[0]['bic']:.2f})")
+    print(f"  Branin (original): {best_orig['name']} (BIC: {best_orig['bic']:.2f})")
     print(f"  LDA: {benchmark_results['LDA'][0]['name']} (BIC: {benchmark_results['LDA'][0]['bic']:.2f})")
     print(f"  SVM: {benchmark_results['SVM'][0]['name']} (BIC: {benchmark_results['SVM'][0]['bic']:.2f})")
     

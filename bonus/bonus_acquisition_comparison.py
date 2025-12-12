@@ -22,7 +22,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, ConstantKernel, Matern
+from sklearn.gaussian_process.kernels import Kernel, RBF, ConstantKernel, Matern, ExpSineSquared
 
 
 def branin(x1, x2, a=1, b=5.1/(4*np.pi**2), c=5/np.pi, r=6, s=10, t=1/(8*np.pi)):
@@ -30,6 +30,47 @@ def branin(x1, x2, a=1, b=5.1/(4*np.pi**2), c=5/np.pi, r=6, s=10, t=1/(8*np.pi))
     term1 = a * (x2 - b * x1**2 + c * x1 - r)**2
     term2 = s * (1 - t) * np.cos(x1)
     return term1 + term2 + s
+
+
+class ActiveDimKernel(Kernel):
+    """Apply a base kernel to selected input dimensions."""
+
+    def __init__(self, base_kernel, active_dims):
+        self.base_kernel = base_kernel
+        self.active_dims = tuple(active_dims)
+
+    def __call__(self, X, Y=None, eval_gradient=False):
+        X_sub = X[:, self.active_dims]
+        Y_sub = None if Y is None else Y[:, self.active_dims]
+        return self.base_kernel(X_sub, Y_sub, eval_gradient=eval_gradient)
+
+    def diag(self, X):
+        return self.base_kernel.diag(X[:, self.active_dims])
+
+    def is_stationary(self):
+        return self.base_kernel.is_stationary()
+
+    @property
+    def hyperparameters(self):
+        return self.base_kernel.hyperparameters
+
+    @property
+    def theta(self):
+        return self.base_kernel.theta
+
+    @theta.setter
+    def theta(self, theta):
+        self.base_kernel.theta = theta
+
+    @property
+    def bounds(self):
+        return self.base_kernel.bounds
+
+    def get_params(self, deep=True):
+        return {"base_kernel": self.base_kernel, "active_dims": self.active_dims}
+
+    def clone_with_theta(self, theta):
+        return ActiveDimKernel(self.base_kernel.clone_with_theta(theta), self.active_dims)
 
 
 def expected_improvement(mu, sigma, f_best, xi=0.01):
@@ -71,17 +112,25 @@ def lower_confidence_bound(mu, sigma, kappa=2.0):
     return -(mu - kappa * sigma)  # Negative so we maximize
 
 
-def fit_gp(X, y, kernel=None, noise_level=0.001):
-    """Fit a Gaussian process model."""
+def fit_gp(X, y, kernel=None, noise_level=0.001, normalize_y=True, n_restarts=8):
+    """Fit a Gaussian process model, respecting noise in original units."""
     if kernel is None:
         n_dim = X.shape[1]
         kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0]*n_dim)
     
+    # sklearn standardizes y internally when normalize_y=True; scale alpha so
+    # noise_level is interpreted in original output units.
+    alpha = noise_level**2
+    if normalize_y:
+        y_std = np.std(y)
+        if y_std > 0:
+            alpha = (noise_level / y_std) ** 2
+
     gp = GaussianProcessRegressor(
         kernel=kernel,
-        alpha=noise_level**2,
-        n_restarts_optimizer=5,
-        normalize_y=True,
+        alpha=alpha,
+        n_restarts_optimizer=n_restarts,
+        normalize_y=normalize_y,
         random_state=42
     )
     gp.fit(X, y)
@@ -147,7 +196,8 @@ def random_search(X_pool, y_pool, n_initial=5, n_iterations=30, init_indices=Non
 
 def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
                                     n_initial=5, n_iterations=30, 
-                                    use_log_transform=False, init_indices=None):
+                                    use_log_transform=False, init_indices=None,
+                                    kernel=None):
     """
     Run Bayesian optimization with a specified acquisition function.
     
@@ -183,7 +233,7 @@ def bayesian_optimization_with_acq(X_pool, y_pool, acquisition_fn, acq_params,
         else:
             y_train_transformed = y_train
         
-        gp = fit_gp(X_train, y_train_transformed)
+        gp = fit_gp(X_train, y_train_transformed, kernel=kernel)
         
         available_indices = np.where(available)[0]
         X_available = X_pool[available_indices]
@@ -232,7 +282,7 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
     print("ACQUISITION FUNCTION COMPARISON")
     print("=" * 70)
     print("NOTE: All methods share identical init points per run (proper pairing)")
-    print("NOTE: Log transform log(y+1) used in GP modeling; gap computed on original y")
+    print("NOTE: Gap computed on original y; GP may model transformed y per dataset")
     
     # Load datasets
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -246,10 +296,22 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
     y_branin = branin(X_branin[:, 0], X_branin[:, 1])
     f_opt_branin = 0.397887
     
+    # Improved modeling choices:
+    # - Branin: original scale + SE + Periodic(x1)
+    # - LDA/SVM: log(y+1) + Matern 3/2
+    rbf2 = RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
+    periodic_x1 = ActiveDimKernel(ExpSineSquared(length_scale=1.0, periodicity=2 * np.pi), active_dims=[0])
+    kernel_branin = ConstantKernel(1.0, (1e-3, 1e3)) * (rbf2 + periodic_x1)
+    kernel_matern = ConstantKernel(1.0, (1e-3, 1e3)) * Matern(
+        length_scale=[1.0, 1.0, 1.0],
+        length_scale_bounds=(1e-2, 1e2),
+        nu=1.5,
+    )
+
     datasets = {
-        'Branin': (X_branin, y_branin, f_opt_branin, True),
-        'LDA': (lda_data[:, :3], lda_data[:, 3], lda_data[:, 3].min(), True),
-        'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True)
+        'Branin': (X_branin, y_branin, f_opt_branin, False, kernel_branin),
+        'LDA': (lda_data[:, :3], lda_data[:, 3], lda_data[:, 3].min(), True, kernel_matern),
+        'SVM': (svm_data[:, :3], svm_data[:, 3], svm_data[:, 3].min(), True, kernel_matern)
     }
     
     # Acquisition functions to compare (including Random Search as baseline)
@@ -263,7 +325,7 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
     
     all_results = {}
     
-    for name, (X_pool, y_pool, f_opt, use_log) in datasets.items():
+    for name, (X_pool, y_pool, f_opt, use_log, kernel) in datasets.items():
         print(f"\n{'='*50}")
         print(f"  {name} DATASET")
         print(f"{'='*50}")
@@ -307,7 +369,8 @@ def run_acquisition_comparison(n_runs=20, save_dir=None):
                         X_pool, y_pool, acq_fn, acq_params,
                         n_initial=5, n_iterations=30,
                         use_log_transform=use_log,
-                        init_indices=init_indices
+                        init_indices=init_indices,
+                        kernel=kernel
                     )
                 
                 # Verify pairing
@@ -448,8 +511,14 @@ def compute_statistics_and_rankings(all_results, save_dir):
         print(f"  (Differences are NOT corrected for multiple comparisons)")
         
         for stat in stats_list[1:]:
-            t_stat, p_value = stats.ttest_rel(best['gaps'], stat['gaps'])
-            effect_size = (best['mean'] - stat['mean']) / np.sqrt((best['std']**2 + stat['std']**2)/2)
+            diff = best['gaps'] - stat['gaps']
+            if np.allclose(diff, 0):
+                t_stat, p_value = 0.0, 1.0
+            else:
+                t_stat, p_value = stats.ttest_rel(best['gaps'], stat['gaps'])
+
+            pooled_std = np.sqrt((best['std']**2 + stat['std']**2) / 2)
+            effect_size = 0.0 if pooled_std == 0 else (best['mean'] - stat['mean']) / pooled_std
             sig_marker = "*" if p_value < 0.05 else "(n.s.)"
             print(f"    vs {stat['name']:<12}: t={t_stat:7.3f}, p={p_value:.4f}, d={effect_size:+.2f} {sig_marker}")
         
@@ -470,6 +539,11 @@ def create_kappa_sensitivity_plot(save_dir):
     X_pool = qmc.scale(X_pool, [-5, 0], [10, 15])
     y_pool = branin(X_pool[:, 0], X_pool[:, 1])
     f_opt = 0.397887
+
+    # Use the improved Branin model: original scale + SE + Periodic(x1)
+    rbf2 = RBF(length_scale=[1.0, 1.0], length_scale_bounds=(1e-2, 1e2))
+    periodic_x1 = ActiveDimKernel(ExpSineSquared(length_scale=1.0, periodicity=2 * np.pi), active_dims=[0])
+    kernel_branin = ConstantKernel(1.0, (1e-3, 1e3)) * (rbf2 + periodic_x1)
     
     kappa_values = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0]
     n_runs = 20
@@ -494,8 +568,9 @@ def create_kappa_sensitivity_plot(save_dir):
             history = bayesian_optimization_with_acq(
                 X_pool, y_pool, 'LCB', {'kappa': kappa},
                 n_initial=5, n_iterations=30,
-                use_log_transform=True,
-                init_indices=init_indices
+                use_log_transform=False,
+                init_indices=init_indices,
+                kernel=kernel_branin
             )
             
             f_best_initial = history['best_so_far'][4]
@@ -523,20 +598,24 @@ def create_kappa_sensitivity_plot(save_dir):
     # Find best κ but check if statistically indistinguishable from others
     best_idx = np.argmax(means)
     best_kappa = kappas[best_idx]
+    spread = float(np.max(means) - np.min(means))
     
-    # Check if top-2 are statistically different
-    sorted_idx = np.argsort(means)[::-1]
-    if len(sorted_idx) >= 2:
-        best_gaps = results_by_kappa[kappas[sorted_idx[0]]]
-        second_gaps = results_by_kappa[kappas[sorted_idx[1]]]
-        _, p_val = stats.ttest_rel(best_gaps, second_gaps)
-        
-        if p_val > 0.05:
-            annotation = f'Top κ values indistinguishable (p={p_val:.2f})'
-        else:
-            annotation = f'Best: κ={best_kappa}'
+    # Check if top-2 are statistically different (or if the curve is essentially flat)
+    if spread < 1e-3:
+        annotation = "Flat sensitivity (all κ similar)"
     else:
-        annotation = f'Best: κ={best_kappa}'
+        sorted_idx = np.argsort(means)[::-1]
+        if len(sorted_idx) >= 2:
+            best_gaps = results_by_kappa[kappas[sorted_idx[0]]]
+            second_gaps = results_by_kappa[kappas[sorted_idx[1]]]
+            _, p_val = stats.ttest_rel(best_gaps, second_gaps)
+
+            if np.isnan(p_val) or p_val > 0.05:
+                annotation = f"Top κ values indistinguishable (p={p_val:.2f})"
+            else:
+                annotation = f"Best: κ={best_kappa}"
+        else:
+            annotation = f"Best: κ={best_kappa}"
     
     ax.annotate(annotation, 
                 xy=(kappas[best_idx], means[best_idx]),

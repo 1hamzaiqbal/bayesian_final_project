@@ -40,12 +40,12 @@ where:
 
 | Metric | Value |
 |--------|-------|
-| EI Maximum Location | x₁ = -3.03, x₂ = 13.64 |
-| EI Value at Maximum | 0.460 |
+| EI Maximum Location | x₁ = 9.39, x₂ = 2.42 |
+| EI Value at Maximum | 1.785 |
 
 **Does the identified point seem like a good next observation location?**
 
-Yes—the EI maximum is near one of Branin's low-value basins (near x₁ ≈ -π), and sits in a region where posterior uncertainty is elevated due to sparse nearby samples. This balances exploitation (moderate predicted value) with exploration (high uncertainty).
+Yes—the EI maximum lies near Branin’s third basin around $(x_1, x_2) \approx (3\pi, 2.5)$, and is in a region of elevated posterior uncertainty. This is a plausible EI choice balancing exploitation (low predicted values) and exploration (high σ).
 
 ---
 
@@ -59,7 +59,7 @@ Yes—the EI maximum is near one of Branin's low-value basins (near x₁ ≈ -π
 | BO iterations | 30 |
 | **Total BO evaluations** | **35** |
 | RS budget | 150 total |
-| GP Model (Branin) | SE (RBF) kernel with log(y+1) |
+| GP Model (Branin) | **SE + Periodic(x1)** on original scale |
 | GP Model (LDA/SVM) | **Matern 3/2** (ν=1.5) with log(y+1) |
 
 **Critical fix:** BO and RS share identical initial 5 points per run for proper paired comparison.
@@ -104,7 +104,7 @@ $$\text{gap} = \frac{f_{\text{initial best}} - f_{\text{found best}}}{f_{\text{i
 
 | Method | Mean Gap | Std |
 |--------|----------|-----|
-| **BO (35 total evals)** | **0.969** | 0.059 |
+| **BO (35 total evals)** | **0.976** | 0.051 |
 | RS (30 total evals) | 0.601 | 0.365 |
 | RS (60 total evals) | 0.719 | 0.313 |
 | RS (90 total evals) | 0.849 | 0.221 |
@@ -115,35 +115,42 @@ $$\text{gap} = \frac{f_{\text{initial best}} - f_{\text{found best}}}{f_{\text{i
 
 | Comparison | t-stat | p-value | ΔGap | Significant? |
 |------------|--------|---------|------|--------------|
-| RS@30 | 4.80 | 0.0001 | +0.37 | Yes* |
-| RS@60 | 4.00 | 0.0008 | +0.25 | Yes* |
-| RS@90 | 3.04 | 0.0068 | +0.12 | Yes* |
-| RS@120 | 2.11 | 0.0479 | +0.08 | Yes* |
-| RS@150 | 2.09 | 0.0508 | +0.08 | No (n.s.) |
+| RS@30 | 4.78 | 0.0001 | +0.38 | Yes* |
+| RS@60 | 3.98 | 0.0008 | +0.26 | Yes* |
+| RS@90 | 3.12 | 0.0056 | +0.13 | Yes* |
+| RS@120 | 2.21 | 0.0399 | +0.08 | Yes* |
+| RS@150 | 2.18 | 0.0423 | +0.08 | Yes* |
 
-**Interpretation:** At RS@150, the BO-RS difference is no longer statistically significant (p=0.051). However, this does **not** prove equivalence—only inconclusive difference. BO's mean gap (0.969) still exceeds RS@150 (0.893) by 0.076.
+**Interpretation:** Even at 150 evaluations, random search remains significantly worse than BO on Branin (p≈0.04). BO’s advantage is robust under the improved Branin surrogate.
 
 ### LDA Dataset
 
 | Method | Mean Gap | Std |
 |--------|----------|-----|
-| **BO (35 total evals)** | **0.851** | 0.234 |
+| **BO (35 total evals)** | **0.862** | 0.236 |
 | RS (30 total evals) | 0.691 | 0.335 |
 | RS (60 total evals) | 0.832 | 0.242 |
 | RS (90 total evals) | 0.932 | 0.107 |
+| RS (120 total evals) | 0.967 | 0.058 |
+| RS (150 total evals) | 0.970 | 0.057 |
 
-**Paired t-test (BO@35 vs RS@30):** p = 0.072 (n.s.)
+**Paired t-tests (BO@35 vs RS@N):**
+RS@30 p=0.0749 (n.s.), RS@60 p=0.6904 (n.s.), RS@90 p=0.1010 (n.s.), RS@120 p=0.0350*, RS@150 p=0.0296*.
 
-At RS@30 already, the difference is not significant. LDA/SVM surfaces are rougher, reducing BO's advantage.
+At RS@30 already, the difference is not significant. By RS@120–150, random search is significantly better in mean gap, suggesting the objective surface is rough and the GP surrogate provides little benefit.
 
 ### SVM Dataset
 
 | Method | Mean Gap | Std |
 |--------|----------|-----|
-| **BO (35 total evals)** | **0.695** | 0.342 |
+| **BO (35 total evals)** | **0.802** | 0.239 |
 | RS (30 total evals) | 0.668 | 0.309 |
+| RS (60 total evals) | 0.810 | 0.246 |
+| RS (90 total evals) | 0.869 | 0.210 |
+| RS (120 total evals) | 0.877 | 0.212 |
+| RS (150 total evals) | 0.911 | 0.094 |
 
-**Paired t-test (BO@35 vs RS@30):** p = 0.748 (n.s.)
+**Paired t-tests (BO@35 vs RS@N):** RS@30 p=0.1735 (n.s.), RS@60 p=0.9203 (n.s.), RS@90 p=0.4113 (n.s.), RS@120 p=0.3619 (n.s.), RS@150 p=0.0942 (n.s.).
 
 ---
 
@@ -152,12 +159,12 @@ At RS@30 already, the difference is not significant. LDA/SVM surfaces are roughe
 | Bullet | Question | Answer |
 |--------|----------|--------|
 | 1 | EI implemented? | Yes - Snoek formula for minimization, ξ=exploration bias |
-| 2 | EI max location? | x₁=-3.03, x₂=13.64 (near Branin basin) |
+| 2 | EI max location? | x₁=9.39, x₂=2.42 (near Branin basin) |
 | 3 | Experiments run? | Yes - 5 init + 30 BO = **35 total** |
-| 7 | Statistical significance? | Branin: RS@150 before p>0.05; LDA/SVM: immediate p>0.05 |
+| 7 | Statistical significance? | Branin: RS still worse at 150; LDA/SVM: no advantage, RS catches up quickly |
 
 **Key Findings:**
 
-1. **BO excels on smooth synthetic functions** (Branin)—RS needs 150 evaluations to match BO@35
-2. **BO provides limited advantage on real benchmarks** (LDA/SVM) where surfaces are rougher
+1. **BO excels on smooth synthetic functions** (Branin)—RS remains significantly worse even at 150 evaluations
+2. **BO provides limited advantage on real benchmarks** (LDA/SVM); RS matches or exceeds BO with enough budget
 3. **Statistical note:** p > 0.05 means "no significant difference detected," NOT "methods are equivalent"

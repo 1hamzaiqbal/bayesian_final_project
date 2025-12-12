@@ -93,7 +93,7 @@ def fit_gp(X, y, kernel, noise_level=0.001, n_restarts=10):
         kernel=kernel,
         alpha=noise_level**2,  # alpha is variance, not std
         n_restarts_optimizer=n_restarts,
-        normalize_y=True,
+        normalize_y=False,
         random_state=42
     )
     gp.fit(X, y)
@@ -114,15 +114,15 @@ def compute_bic(gp, X, y):
     # Count hyperparameters from kernel
     k = gp.kernel_.n_dims
     
-    bic = k * np.log(n) - 2 * log_likelihood
+    bic = k * np.log10(n) - 2 * log_likelihood
     return bic, log_likelihood, k
 
 
 def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", save_dir=None):
     """Create heatmaps of GP posterior mean and std deviation."""
     # Create prediction grid
-    x1 = np.linspace(bounds[0][0], bounds[0][1], 100)
-    x2 = np.linspace(bounds[1][0], bounds[1][1], 100)
+    x1 = np.linspace(bounds[0][0], bounds[0][1], 1000)
+    x2 = np.linspace(bounds[1][0], bounds[1][1], 1000)
     X1, X2 = np.meshgrid(x1, x2)
     X_grid = np.column_stack([X1.ravel(), X2.ravel()])
     
@@ -144,7 +144,7 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
                     label='Training points', zorder=5)
     axes[0].set_xlabel('$x_1$')
     axes[0].set_ylabel('$x_2$')
-    axes[0].set_title('True Branin Function')
+    axes[0].set_title('Branin Function Heatmap')
     plt.colorbar(im0, ax=axes[0], label='$f(x)$')
     axes[0].legend(loc='upper right')
     
@@ -154,7 +154,7 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
     axes[1].scatter(X_train[:, 0], X_train[:, 1], c='red', s=30, edgecolor='white', zorder=5)
     axes[1].set_xlabel('$x_1$')
     axes[1].set_ylabel('$x_2$')
-    axes[1].set_title('GP Posterior Mean')
+    axes[1].set_title(f'GP Posterior Mean with log marginal likelihood {gp.log_marginal_likelihood_value_:.2f}')
     plt.colorbar(im1, ax=axes[1], label='$\\mu(x)$')
     
     # Posterior std
@@ -166,7 +166,7 @@ def create_posterior_heatmaps(gp, X_train, y_train, bounds, title_prefix="", sav
     axes[2].set_title('GP Posterior Std Dev')
     plt.colorbar(im2, ax=axes[2], label='$\\sigma(x)$')
     
-    plt.suptitle(f'{title_prefix}GP Posterior on Branin Function (32 Sobol training points)', fontsize=12)
+    plt.suptitle(f'{title_prefix}GP Posterior Visualizations', fontsize=12)
     plt.tight_layout()
     
     if save_dir:
@@ -219,12 +219,12 @@ def plot_zscore_kde(z_scores, title, save_path=None):
     x = np.linspace(-5, 5, 200)
     if len(z_filtered) > 1:
         kde = stats.gaussian_kde(z_filtered)
-        ax.fill_between(x, kde(x), alpha=0.5, color='steelblue', label='Empirical z-scores')
+        ax.fill_between(x, kde(x), alpha=0.5, color='steelblue', label='KDE of z-scores')
         ax.plot(x, kde(x), color='steelblue', linewidth=2)
     
     # Standard normal for reference
     normal_pdf = stats.norm.pdf(x)
-    ax.plot(x, normal_pdf, 'r--', linewidth=2, label='Standard Normal N(0,1)')
+    ax.plot(x, normal_pdf, 'r--', linewidth=2, label='Reference Standard Normal PDF')
     
     ax.set_xlabel('Z-score', fontsize=11)
     ax.set_ylabel('Density', fontsize=11)
@@ -264,8 +264,14 @@ def search_kernels(X, y, noise_level=0.001, verbose=True):
         'Matern 3/2': ConstantKernel(1.0) * Matern(length_scale=[1.0]*n_dim, nu=1.5),
         'Matern 5/2': ConstantKernel(1.0) * Matern(length_scale=[1.0]*n_dim, nu=2.5),
         'RationalQuadratic': ConstantKernel(1.0) * RationalQuadratic(length_scale=1.0, alpha=1.0),
+        'Periodic': ConstantKernel(1.0) * ExpSineSquared(length_scale=1, periodicity=1),
+        'SE + Matern 3/2': ConstantKernel(1.0) * RBF(length_scale=1.0) + ConstantKernel(1.0) * Matern(length_scale=1.0, nu=1.5),
         'SE + Matern 5/2': ConstantKernel(1.0) * RBF(length_scale=1.0) + ConstantKernel(1.0) * Matern(length_scale=1.0, nu=2.5),
-        'SE (isotropic)': ConstantKernel(1.0) * RBF(length_scale=1.0),
+        'Linear + Periodic': ConstantKernel(1.0) * DotProduct(sigma_0=0.0, sigma_0_bounds="fixed") + ConstantKernel(1.0) * ExpSineSquared(length_scale=1, periodicity=1),
+        'Linear * Periodic': ConstantKernel(1.0) * DotProduct(sigma_0=0.0, sigma_0_bounds="fixed") * ConstantKernel(1.0) * ExpSineSquared(length_scale=1, periodicity=1),
+        'SE + Periodic':  ConstantKernel(1.0) * RBF(length_scale=1.0) +  ConstantKernel(1.0) * ExpSineSquared(length_scale=1, periodicity=1),
+        'SE * Periodic': ConstantKernel(1.0) * RBF(length_scale=1.0) *  ConstantKernel(1.0) * ExpSineSquared(length_scale=1, periodicity=1),
+        # 'SE (isotropic)': ConstantKernel(1.0) * RBF(length_scale=1.0),
     }
     
     results = []
@@ -349,7 +355,7 @@ def analyze_branin_original(save_dir):
     z_scores = compute_zscores(gp, X_train, use_log_transform=False)
     mean_z, std_z = plot_zscore_kde(
         z_scores, 
-        "Z-Scores: Original Branin Data",
+        "KDE of Z-Scores of Residuals",
         save_path=os.path.join(save_dir, "zscore_original.png")
     )
     print(f"  Z-score mean: {mean_z:.3f} (should be ≈ 0)")
@@ -395,6 +401,13 @@ def analyze_branin_log_transformed(X_train, save_dir):
     X_grid = np.column_stack([X1.ravel(), X2.ravel()])
     
     y_mean, y_std = gp_log.predict(X_grid, return_std=True)
+
+    print(f"\nPosterior std at training points for log-transformed GP:")
+    print(f"  Min: {y_std.min():.6f}")
+    print(f"  Max: {y_std.max():.6f}")
+    print(f"  Mean: {y_std.mean():.6f}")
+    print(f"  → Should be near zero (we set noise ≈ 0.001)")
+
     y_mean = y_mean.reshape(X1.shape)
     y_std = y_std.reshape(X1.shape)
     
@@ -412,7 +425,7 @@ def analyze_branin_log_transformed(X_train, save_dir):
     im1 = axes[1].imshow(y_mean, extent=[-5, 10, 0, 15], origin='lower', aspect='auto', cmap='viridis')
     axes[1].scatter(X_train[:, 0], X_train[:, 1], c='red', s=30, edgecolor='white', zorder=5)
     axes[1].set_xlabel('$x_1$'); axes[1].set_ylabel('$x_2$')
-    axes[1].set_title('GP Posterior Mean')
+    axes[1].set_title(f'GP Posterior Mean with log marginal likelihood: {gp_log.log_marginal_likelihood_value_:.2f}')
     plt.colorbar(im1, ax=axes[1])
     
     im2 = axes[2].imshow(y_std, extent=[-5, 10, 0, 15], origin='lower', aspect='auto', cmap='plasma')
@@ -441,7 +454,7 @@ def analyze_branin_log_transformed(X_train, save_dir):
     return gp_log, y_log
 
 
-def compute_bic_analysis(gp_log, y_log, X_train, save_dir):
+def compute_bic_analysis(gp_log, y_log, X_train, save_dir, dataset_mode='log_transformed'):
     """
     Part 3: BIC computation and model search.
     """
@@ -451,21 +464,23 @@ def compute_bic_analysis(gp_log, y_log, X_train, save_dir):
     
     # BIC for the log-transformed SE model
     bic, ll, k = compute_bic(gp_log, X_train, y_log)
-    print(f"\nBIC for Log-Transformed SE Model:")
+    print(f"\nBIC for {dataset_mode} SE Model:")
     print(f"  Log-likelihood: {ll:.4f}")
     print(f"  Number of hyperparameters: {k}")
     print(f"  BIC = {k} × log(32) - 2 × {ll:.4f} = {bic:.4f}")
     
     # Model search
     print("\n--- Searching Over Different Kernels ---")
-    print("(Using log-transformed Branin data)")
+    print(f"(Using {dataset_mode} Branin data)")
     results = search_kernels(X_train, y_log, noise_level=0.001)
     
     print("\n--- Model Rankings (by BIC, lower is better) ---")
-    print(f"{'Rank':<5} {'Kernel':<25} {'BIC':<12} {'Log-Lik':<12} {'Params':<8}")
+    print(f"{'Rank':<5} {'Kernel':<25} {'BIC':<12} {'Log-Lik':<12}")
     print("-" * 65)
     for i, r in enumerate(results):
-        print(f"{i+1:<5} {r['name']:<25} {r['bic']:<12.2f} {r['log_likelihood']:<12.2f} {r['n_params']:<8}")
+        # print(f"{i+1:<5} {r['name']:<25} {r['bic']:<12.2f} {r['log_likelihood']:<12.2f} {r['n_params']:<8}")
+        print(f"{i+1:<5} {r['name']:<25} {r['bic']:<12.2f} {r['log_likelihood']:<12.2f}")
+
     
     best = results[0]
     print(f"\n*** Best Model: {best['name']} ***")
@@ -510,11 +525,20 @@ def analyze_real_benchmarks(save_dir):
         
         # Try with log transformation
         y_log = np.log(y + 1)
+        
         print(f"Log(y+1) range: [{y_log.min():.4f}, {y_log.max():.4f}]")
         
         # Search kernels
         print("\n--- Model Search (log-transformed) ---")
         results = search_kernels(X, y_log, noise_level=0.001, verbose=True)
+        
+        #create a nice table
+        print("\n--- Model Rankings (by BIC, lower is better) ---")
+        print(f"{'Rank':<5} {'Kernel':<25} {'BIC':<12} {'Log-Lik':<12}")
+        print("-" * 65)
+        for i, r in enumerate(results):
+            # print(f"{i+1:<5} {r['name']:<25} {r['bic']:<12.2f} {r['log_likelihood']:<12.2f} {r['n_params']:<8}")
+            print(f"{i+1:<5} {r['name']:<25} {r['bic']:<12.2f} {r['log_likelihood']:<12.2f}")
         
         print(f"\n*** Best Model for {name}: {results[0]['name']} ***")
         print(f"    BIC: {results[0]['bic']:.4f}")
@@ -534,13 +558,14 @@ def main():
     save_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Part 1: Original Branin
-    X_train, y_train, gp_original = analyze_branin_original(save_dir)
+    X_train, y_train_orig, gp_original = analyze_branin_original(save_dir)
     
     # Part 2: Log-transformed Branin  
     gp_log, y_log = analyze_branin_log_transformed(X_train, save_dir)
     
     # Part 3: BIC and model search
     branin_results = compute_bic_analysis(gp_log, y_log, X_train, save_dir)
+    branin_results_nolog = compute_bic_analysis(gp_original, y_train_orig, X_train, save_dir, dataset_mode="non-log-transformed")
     
     # Part 4: Real benchmarks
     benchmark_results = analyze_real_benchmarks(save_dir)
@@ -557,9 +582,9 @@ def main():
     print("  - zscore_log_transformed.png")
     
     print("\nBest models found:")
-    print(f"  Branin (log): {branin_results[0]['name']} (BIC: {branin_results[0]['bic']:.2f})")
-    print(f"  LDA: {benchmark_results['LDA'][0]['name']} (BIC: {benchmark_results['LDA'][0]['bic']:.2f})")
-    print(f"  SVM: {benchmark_results['SVM'][0]['name']} (BIC: {benchmark_results['SVM'][0]['bic']:.2f})")
+    print(f"  Branin (log): {branin_results[0]['name']} (BIC: {branin_results[0]['bic']:.2f}), (params: {branin_results[0]['kernel']})")
+    print(f"  LDA: {benchmark_results['LDA'][0]['name']} (BIC: {benchmark_results['LDA'][0]['bic']:.2f}), (params: {benchmark_results['LDA'][0]['kernel']})")
+    print(f"  SVM: {benchmark_results['SVM'][0]['name']} (BIC: {benchmark_results['SVM'][0]['bic']:.2f}), (params: {benchmark_results['SVM'][0]['kernel']})")
     
     print("\n" + "=" * 70)
 

@@ -23,7 +23,7 @@ warnings.filterwarnings('ignore')
 
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import (
-    RBF, ConstantKernel, Matern
+    RBF, ConstantKernel, Matern, RationalQuadratic
 )
 
 
@@ -79,13 +79,14 @@ def fit_gp(X, y, kernel=None, noise_level=0.001):
     """Fit a Gaussian process model."""
     if kernel is None:
         n_dim = X.shape[1]
-        kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0]*n_dim)
+        # kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0]*n_dim)
+        kernel = ConstantKernel(1.0) * RationalQuadratic(length_scale=1.0, alpha=1.0)
     
     gp = GaussianProcessRegressor(
         kernel=kernel,
         alpha=noise_level**2,
         n_restarts_optimizer=5,
-        normalize_y=True,
+        normalize_y=False,
         random_state=42
     )
     gp.fit(X, y)
@@ -109,7 +110,7 @@ def compute_gap(f_best_found, f_best_initial, f_optimum):
     return np.clip(gap, 0, 1)
 
 
-def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30, 
+def bayesian_optimization(X_pool, y_pool, kernel, n_initial=5, n_iterations=30, 
                           use_log_transform=False, verbose=False):
     """
     Run Bayesian optimization experiment.
@@ -164,7 +165,7 @@ def bayesian_optimization(X_pool, y_pool, n_initial=5, n_iterations=30,
             y_train_transformed = y_train
         
         # Fit GP
-        gp = fit_gp(X_train, y_train_transformed)
+        gp = fit_gp(X_train, y_train_transformed, kernel)
         
         # Predict on available points
         available_indices = np.where(available)[0]
@@ -254,17 +255,20 @@ def create_ei_heatmaps(save_dir):
     
     # Log transform
     y_train_log = np.log(y_train + 1)
+    # y_train_log = y_train
+
     
     # Fit GP with best model from model fitting (SE kernel)
-    kernel = ConstantKernel(1.0) * RBF(length_scale=[1.0, 1.0])
+    print("using matern 5/2 kernel for Branin EI Heatmap with output scale = 10.89, length scale for x1 = 4.6, length scale for x2 = 15.1, nu = 2.5")
+    kernel =  ConstantKernel(1.0) * Matern(length_scale=[1.0]*X_train.shape[1], nu=2.5)
     gp = fit_gp(X_train, y_train_log, kernel)
     
     print(f"Fitted GP on 32 log-transformed Branin points")
     print(f"Kernel: {gp.kernel_}")
     
     # Create prediction grid
-    x1 = np.linspace(-5, 10, 100)
-    x2 = np.linspace(0, 15, 100)
+    x1 = np.linspace(-5, 10, 1000)
+    x2 = np.linspace(0, 15, 1000)
     X1, X2 = np.meshgrid(x1, x2)
     X_grid = np.column_stack([X1.ravel(), X2.ravel()])
     
@@ -307,8 +311,7 @@ def create_ei_heatmaps(save_dir):
     # EI
     im2 = axes[2].imshow(ei, extent=[-5, 10, 0, 15], origin='lower', aspect='auto', cmap='hot')
     axes[2].scatter(X_train[:, 0], X_train[:, 1], c='white', s=30, edgecolor='black', zorder=5)
-    axes[2].plot(max_x1, max_x2, 'c*', markersize=20, markeredgecolor='white', 
-                 markeredgewidth=2, label=f'EI max ({max_x1:.2f}, {max_x2:.2f})')
+    axes[2].plot(max_x1, max_x2, 'o', markersize=20, color='pink', label=f'EI max ({max_x1:.2f}, {max_x2:.2f})')
     axes[2].set_xlabel('$x_1$'); axes[2].set_ylabel('$x_2$')
     axes[2].set_title('Expected Improvement')
     plt.colorbar(im2, ax=axes[2], label='EI(x)')
@@ -364,13 +367,17 @@ def run_experiments(n_runs=20, save_dir=None):
         
         bo_results = []
         rs_results = []
+        if name.lower() == 'svm' or name.lower() == 'lda':
+            kernel = ConstantKernel(1.0) * RationalQuadratic(length_scale=1.0, alpha=1.0)
+        else:
+            kernel = ConstantKernel(1.0) * Matern(length_scale=[1.0]*2, nu=2.5)
         
         for run in range(n_runs):
             np.random.seed(run * 42)  # Different seed for each run
             
             # Bayesian optimization (5 initial + 30 iterations = 35 total)
             bo_history = bayesian_optimization(
-                X_pool, y_pool, n_initial=5, n_iterations=30, 
+                X_pool, y_pool, kernel, n_initial=5, n_iterations=30, 
                 use_log_transform=use_log, verbose=False
             )
             
@@ -430,26 +437,26 @@ def plot_learning_curves(results, save_dir):
         x_rs = np.arange(1, n_obs_rs + 1)
         
         ax.plot(x_bo, bo_gaps.mean(axis=0), 'b-', linewidth=2, label='BO (EI)')
-        ax.fill_between(x_bo, 
-                        bo_gaps.mean(axis=0) - bo_gaps.std(axis=0),
-                        bo_gaps.mean(axis=0) + bo_gaps.std(axis=0),
-                        alpha=0.2, color='b')
+        # ax.fill_between(x_bo, 
+        #                 bo_gaps.mean(axis=0) - bo_gaps.std(axis=0),
+        #                 bo_gaps.mean(axis=0) + bo_gaps.std(axis=0),
+        #                 alpha=0.2, color='b')
         
         ax.plot(x_rs, rs_gaps.mean(axis=0), 'r--', linewidth=2, label='Random Search')
-        ax.fill_between(x_rs,
-                        rs_gaps.mean(axis=0) - rs_gaps.std(axis=0),
-                        rs_gaps.mean(axis=0) + rs_gaps.std(axis=0),
-                        alpha=0.2, color='r')
+        # ax.fill_between(x_rs,
+        #                 rs_gaps.mean(axis=0) - rs_gaps.std(axis=0),
+        #                 rs_gaps.mean(axis=0) + rs_gaps.std(axis=0),
+        #                 alpha=0.2, color='r')
         
         ax.set_xlabel('Number of Observations')
-        ax.set_ylabel('Gap (higher is better)')
+        ax.set_ylabel('Gap')
         ax.set_title(f'{name} Dataset')
         ax.legend()
         ax.set_xlim([1, 35])
         ax.set_ylim([0, 1.05])
         ax.grid(True, alpha=0.3)
     
-    plt.suptitle('Learning Curves: BO vs Random Search', fontsize=13)
+    plt.suptitle('Learning Curves: BayesOpt vs Random Search', fontsize=13)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'learning_curves.png'), dpi=150, bbox_inches='tight')
     plt.close()
@@ -494,15 +501,15 @@ def compute_statistics(results, save_dir):
             rs_gaps_at[n_obs] = np.array(gaps)
         
         # Print results
-        print(f"\nMean Gap (±std):")
-        print(f"  BO (30 obs):          {bo_final_gaps.mean():.4f} ± {bo_final_gaps.std():.4f}")
+        print(f"\nMean Gap (+/- std):")
+        print(f"  BayesOpt (35 obs):          {bo_final_gaps.mean():.4f} +/- {bo_final_gaps.std():.4f}")
         
         for n_obs in [30, 60, 90, 120, 150]:
             gaps = rs_gaps_at[n_obs]
-            print(f"  RS ({n_obs:3d} obs):        {gaps.mean():.4f} ± {gaps.std():.4f}")
+            print(f"  RS ({n_obs:3d} obs):        {gaps.mean():.4f} +/- {gaps.std():.4f}")
         
         # Paired t-test: BO(30) vs RS(30)
-        print(f"\nPaired t-tests (BO@30 vs RS@N):")
+        print(f"\nPaired t-tests (BayesOpt@30 vs RS@N):")
         
         speedup = None
         for n_obs in [30, 60, 90, 120, 150]:
@@ -517,8 +524,8 @@ def compute_statistics(results, save_dir):
                         speedup = n_obs
         
         if speedup:
-            print(f"\n  Speedup: BO needs ~30 obs to match RS at ~{speedup} obs")
-            print(f"  → BO is ~{speedup/30:.1f}x faster than random search")
+            print(f"\n  Speedup: BayesOpt needs ~35 obs to match RS at ~{speedup} obs")
+            print(f"  -> BayesOpt is ~{speedup/30:.1f}x faster than random search")
         
         stats_results[name] = {
             'bo_mean': bo_final_gaps.mean(),

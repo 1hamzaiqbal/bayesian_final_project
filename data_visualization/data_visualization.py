@@ -75,13 +75,14 @@ def create_branin_heatmap(save_path=None):
     # Mark the three global minima
     minima = [(-np.pi, 12.275), (np.pi, 2.275), (9.42478, 2.475)]
     for x, y in minima:
-        ax.plot(x, y, 'r*', markersize=15, markeredgecolor='white', 
-                markeredgewidth=1.5, label='Global minimum' if x == -np.pi else '')
+        ax.plot(x, y, 'o', markersize=15, color='red', label='Global minimum' if x == -np.pi else '')
     
     ax.set_xlabel('$x_1$', fontsize=12)
     ax.set_ylabel('$x_2$', fontsize=12)
-    ax.set_title('Branin Function Heatmap\n$f(x_1, x_2) = a(x_2 - bx_1^2 + cx_1 - r)^2 + s(1-t)\\cos(x_1) + s$', 
-                 fontsize=12)
+    # ax.set_title('Branin Function Heatmap\n$f(x_1, x_2) = a(x_2 - bx_1^2 + cx_1 - r)^2 + s(1-t)\\cos(x_1) + s$', 
+    #              fontsize=12)
+    ax.set_title('Branin Function Heatmap bullet point1', 
+                  fontsize=12)
     
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label('$f(x_1, x_2)$', fontsize=11)
@@ -181,11 +182,11 @@ def create_transformed_heatmap(save_path=None):
                          aspect='auto', cmap='viridis')
     axes[1].set_xlabel('$x_1$', fontsize=11)
     axes[1].set_ylabel('$x_2$', fontsize=11)
-    axes[1].set_title('Log-Transformed: $\\log(f + 1)$', fontsize=12)
+    axes[1].set_title('Log-Transformed Branin Function', fontsize=12)
     cbar2 = plt.colorbar(im2, ax=axes[1])
     cbar2.set_label('$\\log(f + 1)$', fontsize=10)
     
-    plt.suptitle('Transformation to Improve Stationarity', fontsize=13, y=1.02)
+    plt.suptitle('Log Transform Brainin Function to Make it More Stationary bullet point 3', fontsize=13, y=1.02)
     plt.tight_layout()
     
     if save_path:
@@ -260,27 +261,37 @@ def create_kde_plots(save_path=None):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     
     # LDA KDE
-    x_lda = np.linspace(lda_values.min() * 0.9, lda_values.max() * 1.1, 1000)
+    x_lda = np.linspace(lda_values.min() * 0.9, lda_values.max() * 1.1, len(lda_values))
     kde_lda = stats.gaussian_kde(lda_values)
     axes[0].fill_between(x_lda, kde_lda(x_lda), alpha=0.5, color='steelblue')
     axes[0].plot(x_lda, kde_lda(x_lda), color='steelblue', linewidth=2)
-    axes[0].axvline(lda_values.min(), color='red', linestyle='--', 
-                    label=f'Min: {lda_values.min():.2f}', linewidth=1.5)
-    axes[0].set_xlabel('Performance Value (to minimize)', fontsize=11)
+    # axes[0].plot(x_lda, lda_values, color='green', linewidth=1, label="raw vals")
+    axes[0].axvline(np.median(lda_values), color='red', linestyle='--', 
+                    label=f'Median: {np.median(lda_values):.4f}', linewidth=1.5)
+    axes[0].axvline(lda_values.mean(), color='pink', linestyle='--', 
+                    label=f'Mean: {lda_values.mean():.4f}', linewidth=1.5)
+    # axes[0].axvline(lda_values.min(), color='red', linestyle='--', 
+    #                 label=f'Min: {lda_values.min():.2f}', linewidth=1.5)
+    axes[0].set_xlabel('Column 4 Values', fontsize=11)
     axes[0].set_ylabel('Density', fontsize=11)
-    axes[0].set_title('LDA Benchmark: Kernel Density Estimate', fontsize=12)
+    axes[0].set_title('KDE on LDA Benchmark', fontsize=12)
     axes[0].legend()
     
     # SVM KDE
-    x_svm = np.linspace(svm_values.min() * 0.9, svm_values.max() * 1.1, 1000)
+    x_svm = np.linspace(svm_values.min() * 0.9, svm_values.max() * 1.1, len(svm_values))
     kde_svm = stats.gaussian_kde(svm_values)
     axes[1].fill_between(x_svm, kde_svm(x_svm), alpha=0.5, color='darkorange')
+    # axes[1].plot(x_svm, svm_values, color='green', linewidth=1, label='raw vals')
     axes[1].plot(x_svm, kde_svm(x_svm), color='darkorange', linewidth=2)
-    axes[1].axvline(svm_values.min(), color='red', linestyle='--', 
-                    label=f'Min: {svm_values.min():.4f}', linewidth=1.5)
-    axes[1].set_xlabel('Performance Value (to minimize)', fontsize=11)
+    axes[1].axvline(np.median(svm_values), color='red', linestyle='--', 
+                    label=f'Median: {np.median(svm_values):.4f}', linewidth=1.5)
+    axes[1].axvline(svm_values.mean(), color='pink', linestyle='--', 
+                    label=f'Mean: {svm_values.mean():.4f}', linewidth=1.5)
+    # axes[1].axvline(svm_values.min(), color='red', linestyle='--', 
+    #                 label=f'Min: {svm_values.min():.4f}', linewidth=1.5)
+    axes[1].set_xlabel('Column 4 Values', fontsize=11)
     axes[1].set_ylabel('Density', fontsize=11)
-    axes[1].set_title('SVM Benchmark: Kernel Density Estimate', fontsize=12)
+    axes[1].set_title('KDE on SVM Benchmark', fontsize=12)
     axes[1].legend()
     
     plt.tight_layout()
@@ -347,42 +358,42 @@ def create_transformed_kde_plots(save_path=None):
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     
     # LDA Original
-    x_lda = np.linspace(lda_values.min() * 0.9, lda_values.max() * 1.1, 1000)
+    x_lda = np.linspace(lda_values.min() * 0.9, lda_values.max() * 1.1, len(lda_values))
     kde_lda = stats.gaussian_kde(lda_values)
     axes[0, 0].fill_between(x_lda, kde_lda(x_lda), alpha=0.5, color='steelblue')
     axes[0, 0].plot(x_lda, kde_lda(x_lda), color='steelblue', linewidth=2)
-    axes[0, 0].set_xlabel('Performance Value', fontsize=10)
+    axes[0, 0].set_xlabel('Col 4 values', fontsize=10)
     axes[0, 0].set_ylabel('Density', fontsize=10)
-    axes[0, 0].set_title('LDA: Original Distribution', fontsize=11)
+    axes[0, 0].set_title('Original LDA Distribution', fontsize=11)
     
     # LDA Log-transformed
-    x_lda_log = np.linspace(lda_log.min() * 0.95, lda_log.max() * 1.05, 1000)
+    x_lda_log = np.linspace(lda_log.min() * 0.95, lda_log.max() * 1.05, len(lda_values))
     kde_lda_log = stats.gaussian_kde(lda_log)
     axes[0, 1].fill_between(x_lda_log, kde_lda_log(x_lda_log), alpha=0.5, color='steelblue')
     axes[0, 1].plot(x_lda_log, kde_lda_log(x_lda_log), color='steelblue', linewidth=2)
-    axes[0, 1].set_xlabel('log(Performance Value)', fontsize=10)
+    axes[0, 1].set_xlabel('log(Col 4 values)', fontsize=10)
     axes[0, 1].set_ylabel('Density', fontsize=10)
-    axes[0, 1].set_title('LDA: Log-Transformed Distribution', fontsize=11)
+    axes[0, 1].set_title('Log-transformed LDA Distribution', fontsize=11)
     
     # SVM Original
-    x_svm = np.linspace(svm_values.min() * 0.9, svm_values.max() * 1.1, 1000)
+    x_svm = np.linspace(svm_values.min() * 0.9, svm_values.max() * 1.1, len(svm_values))
     kde_svm = stats.gaussian_kde(svm_values)
     axes[1, 0].fill_between(x_svm, kde_svm(x_svm), alpha=0.5, color='darkorange')
     axes[1, 0].plot(x_svm, kde_svm(x_svm), color='darkorange', linewidth=2)
-    axes[1, 0].set_xlabel('Performance Value', fontsize=10)
+    axes[1, 0].set_xlabel('Col 4 values', fontsize=10)
     axes[1, 0].set_ylabel('Density', fontsize=10)
-    axes[1, 0].set_title('SVM: Original Distribution', fontsize=11)
+    axes[1, 0].set_title('Original SVM Distribution', fontsize=11)
     
     # SVM Log-transformed
-    x_svm_log = np.linspace(svm_log.min() * 0.95, svm_log.max() * 1.05, 1000)
+    x_svm_log = np.linspace(svm_log.min() * 0.95, svm_log.max() * 1.05, len(svm_values))
     kde_svm_log = stats.gaussian_kde(svm_log)
     axes[1, 1].fill_between(x_svm_log, kde_svm_log(x_svm_log), alpha=0.5, color='darkorange')
     axes[1, 1].plot(x_svm_log, kde_svm_log(x_svm_log), color='darkorange', linewidth=2)
-    axes[1, 1].set_xlabel('log(Performance Value)', fontsize=10)
+    axes[1, 1].set_xlabel('log(Col 4 values)', fontsize=10)
     axes[1, 1].set_ylabel('Density', fontsize=10)
-    axes[1, 1].set_title('SVM: Log-Transformed Distribution', fontsize=11)
+    axes[1, 1].set_title('Log-transformed SVM Distribution', fontsize=11)
     
-    plt.suptitle('Comparison: Original vs Log-Transformed Distributions', fontsize=13, y=1.01)
+    plt.suptitle('Original vs Log-transformed Distributions', fontsize=13, y=1.01)
     plt.tight_layout()
     
     if save_path:
